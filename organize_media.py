@@ -11,8 +11,11 @@ from glob import glob
 from pathlib import Path
 import subprocess
 
-import exifread
+import exiftool
+# import exifread
 
+PHOTO_EXTENSIONS = [".jpg", ".arw", ".sr2", ".raf"]
+VID_EXTENSIONS = [".mp4"]
 
 def dir_path(path):
     if os.path.isdir(path):
@@ -22,23 +25,19 @@ def dir_path(path):
 
 
 def get_date_exif(file):
-    with open(file, "rb") as f:
-        tags = exifread.process_file(f, stop_tag="EXIF DateTimeOriginal")
-        t = str(tags["EXIF DateTimeOriginal"])
-
-    if not re.match(r"\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}", t):
-        raise Exception(f"WOAH: {t}")
-
-    return datetime.strptime(t, "%Y:%m:%d %H:%M:%S")
+    tag = "EXIF:DateTimeOriginal"
+    with exiftool.ExifToolHelper() as et:
+        t = et.get_tags([file], tags=tag)[0][tag]
+        if not re.match(r"\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}", t):
+            raise Exception(f"WOAH: {t}")
+        return datetime.strptime(t, "%Y:%m:%d %H:%M:%S")
 
 def get_date_ffmpeg(file):
-    print("BA")
     cmd = subprocess.run(['ffmpeg', '-i', file, '-dump'], capture_output=True)
     stderr = cmd.stderr.decode('utf-8')
     for line in stderr.split("\n"):
         if 'creation_time' in line:
             return datetime.fromisoformat(line.split()[-1])
-
     raise Exception(f'could not find date for {file}')
 
 
@@ -57,9 +56,9 @@ for file in glob(os.path.join(args.source, "**"), recursive=True):
     _, ext = os.path.splitext(file)
     ext = ext.lower()
 
-    if ext in [".jpg", ".arw", ".sr2"]:
+    if ext in PHOTO_EXTENSIONS:
         date = get_date_exif(file)
-    elif ext in [".mp4"]:
+    elif ext in VID_EXTENSIONS:
         date = get_date_ffmpeg(file)
     else:
         continue
@@ -67,8 +66,7 @@ for file in glob(os.path.join(args.source, "**"), recursive=True):
     target_dir = (
         Path(args.target)
         / date.strftime("%Y")
-        / date.strftime("%m")
-        / date.strftime("%d")
+        / date.strftime("%Y-%m-%d")
     )
 
     target_file = target_dir / os.path.basename(file)

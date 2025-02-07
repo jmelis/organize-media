@@ -1,0 +1,6 @@
+#!/bin/bash
+
+cd ~/personal/git/organize-media
+source venv/bin/activate
+
+exec python3 organize_media.py "$@"
