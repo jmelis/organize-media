@@ -6,16 +6,15 @@ import filecmp
 import os
 import re
 import shutil
-import sys
 from glob import glob
 from pathlib import Path
 import subprocess
 
 import exiftool
-# import exifread
 
 PHOTO_EXTENSIONS = [".jpg", ".arw", ".sr2", ".raf"]
 VID_EXTENSIONS = [".mp4"]
+
 
 def dir_path(path):
     if os.path.isdir(path):
@@ -32,13 +31,14 @@ def get_date_exif(file):
             raise Exception(f"WOAH: {t}")
         return datetime.strptime(t, "%Y:%m:%d %H:%M:%S")
 
+
 def get_date_ffmpeg(file):
-    cmd = subprocess.run(['ffmpeg', '-i', file, '-dump'], capture_output=True)
-    stderr = cmd.stderr.decode('utf-8')
+    cmd = subprocess.run(["ffmpeg", "-i", file, "-dump"], capture_output=True)
+    stderr = cmd.stderr.decode("utf-8")
     for line in stderr.split("\n"):
-        if 'creation_time' in line:
+        if "creation_time" in line:
             return datetime.fromisoformat(line.split()[-1])
-    raise Exception(f'could not find date for {file}')
+    raise Exception(f"could not find date for {file}")
 
 
 parser = argparse.ArgumentParser(prog="organize-media")
@@ -63,11 +63,7 @@ for file in glob(os.path.join(args.source, "**"), recursive=True):
     else:
         continue
 
-    target_dir = (
-        Path(args.target)
-        / date.strftime("%Y")
-        / date.strftime("%Y-%m-%d")
-    )
+    target_dir = Path(args.target) / date.strftime("%Y") / date.strftime("%Y-%m-%d")
 
     target_file = target_dir / os.path.basename(file)
 
