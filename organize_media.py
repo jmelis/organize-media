@@ -13,7 +13,7 @@ import subprocess
 import exiftool
 
 PHOTO_EXTENSIONS = [".jpg", ".arw", ".sr2", ".raf"]
-VID_EXTENSIONS = [".mp4"]
+VID_EXTENSIONS = [".mp4", ".mov"]
 
 
 def dir_path(path):
@@ -45,6 +45,7 @@ parser = argparse.ArgumentParser(prog="organize-media")
 parser.add_argument("source", metavar="SOURCE")
 parser.add_argument("target", metavar="TARGET", type=dir_path)
 parser.add_argument("-n", action="store_true")
+parser.add_argument("--ext", action="store_true", help="group by extension")
 
 
 args = parser.parse_args()
@@ -64,6 +65,9 @@ for file in glob(os.path.join(args.source, "**"), recursive=True):
         continue
 
     target_dir = Path(args.target) / date.strftime("%Y") / date.strftime("%Y-%m-%d")
+
+    if args.ext:
+        target_dir = target_dir / ext[1:]
 
     target_file = target_dir / os.path.basename(file)
 

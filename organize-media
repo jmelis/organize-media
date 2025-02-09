@@ -1,6 +1,3 @@
 #!/bin/bash
-
-cd ~/personal/git/organize-media
-source venv/bin/activate
-
-exec python3 organize_media.py "$@"
+source ~/personal/git/organize-media/venv/bin/activate
+exec python3 ~/personal/git/organize-media/organize_media.py "$@"
