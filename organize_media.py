@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+"""
+remember that sometimes this fails because of chflags nouchg
+"""
+
 import argparse
 from datetime import datetime
 import filecmp
@@ -53,6 +57,8 @@ args = parser.parse_args()
 if not os.path.isdir(args.source):
     raise Exception("source_dir not a dir")
 
+errors = []
+
 for file in glob(os.path.join(args.source, "**"), recursive=True):
     _, ext = os.path.splitext(file)
     ext = ext.lower()
@@ -89,4 +95,15 @@ for file in glob(os.path.join(args.source, "**"), recursive=True):
 
     if not args.n:
         target_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(file, target_file)
+        try:
+            shutil.move(file, target_file)
+        except PermissionError as e:
+            errors.append((file, e))
+            continue
+
+if errors:
+    print(f"There were {len(errors)} errors:")
+    for file, error in errors:
+        print(f"- {file}: {error}")
+    exit(1)
+
