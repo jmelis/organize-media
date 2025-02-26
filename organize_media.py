@@ -30,9 +30,14 @@ def dir_path(path):
 def get_date_exif(file):
     tag = "EXIF:DateTimeOriginal"
     with exiftool.ExifToolHelper() as et:
-        t = et.get_tags([file], tags=tag)[0][tag]
+        try:
+            t = et.get_tags([file], tags=tag)[0][tag]
+        except KeyError:
+            raise Exception("No EXIF data for DateTimeOriginal")
+
         if not re.match(r"\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}", t):
             raise Exception(f"WOAH: {t}")
+
         return datetime.strptime(t, "%Y:%m:%d %H:%M:%S")
 
 
@@ -64,7 +69,11 @@ for file in glob(os.path.join(args.source, "**"), recursive=True):
     ext = ext.lower()
 
     if ext in PHOTO_EXTENSIONS:
-        date = get_date_exif(file)
+        try:
+            date = get_date_exif(file)
+        except Exception as e:
+            errors.append((file, str(e)))
+            continue
     elif ext in VID_EXTENSIONS:
         date = get_date_ffmpeg(file)
     else:
