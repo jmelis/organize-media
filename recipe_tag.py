@@ -38,6 +38,7 @@ RECIPES = """
 0|-32|-16|256|64|0|40 -80,Nurture Nature
 NONE|-16|-48|1280|0|0|0 0,Acros Journey
 1536|0|0|256|64|0|-20 80,McCurry Kodachrome
+2048|32|-16|224|64|64|-20 -60,Classic Cuban Neg
 """
 
 def serialize(tags):
@@ -54,18 +55,10 @@ def get_tags(file, human=False):
 
     return tags
 
-#  |  set_tags(
-#  |      self,
-#  |      files: Union[Any, List[Any]],
-#  |      tags: Dict,
-#  |      params: Union[str, List, NoneType] = None
-#  |  )
-def write_description(file, recipe_info):
-    print("do write")
-    # print(['write tag', file, RECIPE_INFO_TAG, recipe_info])
+
+def write_recipe_info(file, recipe_info_data):
     with ExifToolHelper() as et:
-        out = et.set_tags(file, tags={RECIPE_INFO_TAG: recipe_info})
-        print(out)
+        et.set_tags(file, tags={RECIPE_INFO_TAG: recipe_info_data}, params=["-overwrite_original"])
 
 if __name__ == "__main__":
     # argparser for files (nargs)
@@ -80,21 +73,18 @@ if __name__ == "__main__":
         recipes_dict[recipe] = recipename
 
     for file in args.files:
-        print(file)
+        msg = file
 
         tags = get_tags(file)
         recipe_id = serialize(tags)
 
-        recipe = None
-        if recipe_id in recipes_dict:
-            recipe = recipes_dict[recipe_id]
-            print(f"  Recipe: {recipe}")
-
-            if args.tag:
-                desc_info = tags.get(RECIPE_INFO_TAG, "")
-                if desc_info.split("\n")[-1] != recipe:
-                    new_desc = desc_info + "\n" + recipe_id
-                    write_description(file, recipe_id)
+        recipe = recipes_dict.get(recipe_id, None)
+        if recipe is not None:
+            msg += f" -- Recipe: {recipe}"
+            if args.tag and tags.get(RECIPE_INFO_TAG) != recipe:
+                write_recipe_info(file, recipe)
+                msg += " [successfully tagged]"
+            print(msg)
         else:
             tags = get_tags(file, human=True)
 
@@ -103,13 +93,14 @@ if __name__ == "__main__":
                 del tags[RECIPE_INFO_TAG]
             except KeyError:
                 pass
+
             if 'SourceFile' in tags:
                 del tags['SourceFile']
 
+            print(msg)
             for tag, value in tags.items():
                 print(f"  {tag}: {value}")
             print(f"  RecipeId: {recipe_id}")
-        print()
 
         sys.stdout.flush()
 
