@@ -8,13 +8,13 @@ TAGS = [
     "MakerNotes:FilmMode",
     "MakerNotes:HighlightTone",
     "MakerNotes:ShadowTone",
-    "MakerNotes:Saturation", # color
+    "MakerNotes:Saturation",  # color
     "MakerNotes:ColorChromeEffect",
     "MakerNotes:ColorChromeFXBlue",
     "MakerNotes:WhiteBalanceFineTune",
 ]
 
-RECIPE_INFO_TAG = 'XMP:ExtDescrAccessibility'
+RECIPE_INFO_TAG = "XMP:ExtDescrAccessibility"
 
 RECIPES = """
 1536|16|16|256|64|32|40 -80,Reggie's Portra
@@ -27,29 +27,35 @@ NONE|-16|-48|1280|0|0|0 0,Acros Journey
 2048|32|-16|224|64|64|-20 -60,Classic Cuban Neg
 """
 
+
 def serialize(tags):
-    return "|".join([str(tags.get(t,"NONE")) for t in TAGS])
+    return "|".join([str(tags.get(t, "NONE")) for t in TAGS])
+
 
 def get_tags(file, human=False):
     if human:
         common_args = ["-G"]
     else:
-        common_args = ["-G","-n"]
+        common_args = ["-G", "-n"]
 
     with ExifToolHelper(common_args=common_args) as et:
-        tags = et.get_tags(file,tags=(TAGS + [RECIPE_INFO_TAG]))[0]
+        tags = et.get_tags(file, tags=(TAGS + [RECIPE_INFO_TAG]))[0]
 
     return tags
 
 
 def write_recipe_info(file, recipe_info_data):
     with ExifToolHelper() as et:
-        et.set_tags(file, tags={RECIPE_INFO_TAG: recipe_info_data}, params=["-overwrite_original"])
+        et.set_tags(
+            file,
+            tags={RECIPE_INFO_TAG: recipe_info_data},
+            params=["-overwrite_original"],
+        )
+
 
 if __name__ == "__main__":
-    # argparser for files (nargs)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tag", action='store_true')
+    parser.add_argument("--tag", action="store_true")
     parser.add_argument("files", nargs="+")
     args = parser.parse_args()
 
@@ -72,19 +78,15 @@ if __name__ == "__main__":
             tags = get_tags(file, human=True)
 
             try:
-                del tags['SourceFile']
+                del tags["SourceFile"]
                 del tags[RECIPE_INFO_TAG]
             except KeyError:
                 pass
 
-            if 'SourceFile' in tags:
-                del tags['SourceFile']
-
             print(msg)
+
             for tag, value in tags.items():
                 print(f"  {tag}: {value}")
             print(f"  RecipeId: {recipe_id}")
 
         sys.stdout.flush()
-
-
