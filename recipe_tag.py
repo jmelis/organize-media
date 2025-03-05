@@ -5,27 +5,13 @@ from exiftool import ExifToolHelper
 
 
 TAGS = [
-    # "EXIF:Make",
-    # "EXIF:Model",
-    # "EXIF:ExposureTime",
-    # "EXIF:FNumber",
-    # "EXIF:ISO",
     "MakerNotes:FilmMode",
-    #"MakerNotes:DynamicRangeSetting",
-    #"MakerNotes:DevelopmentDynamicRange",
     "MakerNotes:HighlightTone",
     "MakerNotes:ShadowTone",
     "MakerNotes:Saturation", # color
-    #"MakerNotes:NoiseReduction",
-    #"MakerNotes:Sharpness",
-    # clarity
-    #"MakerNotes:GrainEffectSize",
-    #"MakerNotes:GrainEffectRoughness",
     "MakerNotes:ColorChromeEffect",
     "MakerNotes:ColorChromeFXBlue",
     "MakerNotes:WhiteBalanceFineTune",
-    # ?
-    # "MakerNotes:Contrast",
 ]
 
 RECIPE_INFO_TAG = 'XMP:ExtDescrAccessibility'
@@ -67,10 +53,7 @@ if __name__ == "__main__":
     parser.add_argument("files", nargs="+")
     args = parser.parse_args()
 
-    recipes_dict = {}
-    for recipe_recipename  in RECIPES.strip().split("\n"):
-        recipe, recipename = recipe_recipename.split(",",1)
-        recipes_dict[recipe] = recipename
+    recipes_dict = dict([r.split(",", 2) for r in RECIPES.strip().split("\n")])
 
     for file in args.files:
         msg = file
