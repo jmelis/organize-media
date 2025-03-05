@@ -17,14 +17,14 @@ TAGS = [
 RECIPE_INFO_TAG = "XMP:ExtDescrAccessibility"
 
 RECIPES = """
-1536|16|16|256|64|32|40 -80,Reggie's Portra
-1536|0|0|256|64|32|40 -100,Kodachrome 64
-1536|-32|-16|224|64|64|20 -20,Muted
-2048|32|-48|224|64|64|20 -60,Pacific Blues
-0|-32|-16|256|64|0|40 -80,Nurture Nature
-NONE|-16|-48|1280|0|0|0 0,Acros Journey
-1536|0|0|256|64|0|-20 80,McCurry Kodachrome
-2048|32|-16|224|64|64|-20 -60,Classic Cuban Neg
+    1536|16|16|256|64|32|40 -80,Reggie's Portra
+    1536|0|0|256|64|32|40 -100,Kodachrome 64
+    1536|-32|-16|224|64|64|20 -20,Muted
+    2048|32|-48|224|64|64|20 -60,Pacific Blues
+    0|-32|-16|256|64|0|40 -80,Nurture Nature
+    NONE|-16|-48|1280|0|0|0 0,Acros Journey
+    1536|0|0|256|64|0|-20 80,McCurry Kodachrome
+    2048|32|-16|224|64|64|-20 -60,Classic Cuban Neg
 """
 
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("files", nargs="+")
     args = parser.parse_args()
 
-    recipes_dict = dict([r.split(",", 2) for r in RECIPES.strip().split("\n")])
+    recipes_dict = dict([r.strip().split(",", 2) for r in RECIPES.strip().split("\n")])
 
     for file in args.files:
         msg = file
