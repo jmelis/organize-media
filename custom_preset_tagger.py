@@ -28,6 +28,8 @@ TAGS = [
     # "MakerNotes:Contrast",
 ]
 
+RECIPE_INFO_TAG = 'XMP:ExtDescrAccessibility'
+
 RECIPES = """
 1536|16|16|256|64|32|40 -80,Reggie's Portra
 1536|0|0|256|64|32|40 -100,Kodachrome 64
@@ -48,13 +50,27 @@ def get_tags(file, human=False):
         common_args = ["-G","-n"]
 
     with ExifToolHelper(common_args=common_args) as et:
-        tags = et.get_tags(file,tags=TAGS)[0]
+        tags = et.get_tags(file,tags=(TAGS + [RECIPE_INFO_TAG]))[0]
 
     return tags
+
+#  |  set_tags(
+#  |      self,
+#  |      files: Union[Any, List[Any]],
+#  |      tags: Dict,
+#  |      params: Union[str, List, NoneType] = None
+#  |  )
+def write_description(file, recipe_info):
+    print("do write")
+    # print(['write tag', file, RECIPE_INFO_TAG, recipe_info])
+    with ExifToolHelper() as et:
+        out = et.set_tags(file, tags={RECIPE_INFO_TAG: recipe_info})
+        print(out)
 
 if __name__ == "__main__":
     # argparser for files (nargs)
     parser = argparse.ArgumentParser()
+    parser.add_argument("--tag", action='store_true')
     parser.add_argument("files", nargs="+")
     args = parser.parse_args()
 
@@ -69,19 +85,30 @@ if __name__ == "__main__":
         tags = get_tags(file)
         recipe_id = serialize(tags)
 
+        recipe = None
         if recipe_id in recipes_dict:
             recipe = recipes_dict[recipe_id]
             print(f"  Recipe: {recipe}")
+
+            if args.tag:
+                desc_info = tags.get(RECIPE_INFO_TAG, "")
+                if desc_info.split("\n")[-1] != recipe:
+                    new_desc = desc_info + "\n" + recipe_id
+                    write_description(file, recipe_id)
         else:
             tags = get_tags(file, human=True)
 
+            try:
+                del tags['SourceFile']
+                del tags[RECIPE_INFO_TAG]
+            except KeyError:
+                pass
             if 'SourceFile' in tags:
                 del tags['SourceFile']
 
             for tag, value in tags.items():
                 print(f"  {tag}: {value}")
             print(f"  RecipeId: {recipe_id}")
-
         print()
 
         sys.stdout.flush()

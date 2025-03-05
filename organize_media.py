@@ -98,9 +98,10 @@ for file in glob(os.path.join(args.source, "**"), recursive=True):
                 f"Can delete {file}: {target_file} already present in target directory"
             )
         else:
-            raise Exception(
+            errors.append((file, Exception(
                 f"ERROR: File discrepancy: {target_file} exists with different contents than {file}"
-            )
+            )))
+            continue
 
     if not args.n:
         target_dir.mkdir(parents=True, exist_ok=True)
