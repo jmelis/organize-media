@@ -365,9 +365,9 @@ def main():
         help="Show what would be done without moving files"
     )
     parser.add_argument(
-        "--no-ext",
+        "--ext",
         action="store_true",
-        help="Don't group files by extension (default: group by extension)"
+        help="Group files by extension within date folders (default: don't group)"
     )
     parser.add_argument(
         "--batch-size",
@@ -386,7 +386,7 @@ def main():
     exit_code = organize_media(
         source_dir=args.source,
         target_dir=args.target,
-        group_by_extension=not args.no_ext,
+        group_by_extension=args.ext,
         dry_run=args.dry_run,
         batch_size=args.batch_size,
         skip_flag_check=args.skip_flag_check
