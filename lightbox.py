@@ -29,6 +29,8 @@ import sys
 from pathlib import Path
 from PIL import Image, ImageOps
 import io
+from collections import OrderedDict
+from threading import Thread, Lock
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QStatusBar, QWidget, QHBoxLayout, QMessageBox
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPalette
 from PyQt5.QtCore import Qt, QTimer
@@ -59,6 +61,81 @@ COLOR_TAGS = {
 }
 
 
+class ImageCache:
+    """LRU cache for loaded PIL images."""
+    def __init__(self, max_size=15):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+        self.lock = Lock()
+
+    def get(self, path):
+        """Get image from cache, returns None if not cached."""
+        with self.lock:
+            if path in self.cache:
+                # Move to end (most recently used)
+                self.cache.move_to_end(path)
+                return self.cache[path]
+            return None
+
+    def put(self, path, image):
+        """Add image to cache, evicting oldest if necessary."""
+        with self.lock:
+            if path in self.cache:
+                # Update and move to end
+                self.cache.move_to_end(path)
+            self.cache[path] = image
+
+            # Evict oldest if over capacity
+            while len(self.cache) > self.max_size:
+                self.cache.popitem(last=False)
+
+
+class TagCache:
+    """Cache for file tag metadata."""
+    def __init__(self):
+        self.cache = {}
+        self.lock = Lock()
+
+    def preload(self, image_files):
+        """Preload tags for all images in background."""
+        def load_tags():
+            for path in image_files:
+                tags = self._read_tags(path)
+                with self.lock:
+                    self.cache[path] = tags
+
+        Thread(target=load_tags, daemon=True).start()
+
+    def _read_tags(self, path):
+        """Read tags directly from file."""
+        try:
+            meta = OSXMetaData(str(path))
+            tags = meta.tags
+
+            result = []
+            for num, (tag_obj, color) in COLOR_TAGS.items():
+                if tag_obj in tags:
+                    result.append((tag_obj.name, color))
+            return result
+        except Exception as e:
+            print(f"Error reading tags from {path.name}: {e}", file=sys.stderr)
+            return []
+
+    def get(self, path):
+        """Get tags from cache, loading if necessary."""
+        with self.lock:
+            if path not in self.cache:
+                # Cache miss - load synchronously
+                self.cache[path] = self._read_tags(path)
+            return self.cache[path]
+
+    def invalidate(self, path):
+        """Invalidate cache entry after tag modification."""
+        with self.lock:
+            if path in self.cache:
+                self.cache[path] = self._read_tags(path)
+
+
 class ImageViewer(QMainWindow):
     def __init__(self, image_files, start_index=0):
         super().__init__()
@@ -66,6 +143,13 @@ class ImageViewer(QMainWindow):
         self.image_files = sorted(image_files)
         self.current_index = start_index
         self.current_pil_image = None
+
+        # Initialize caches
+        self.image_cache = ImageCache(max_size=15)
+        self.tag_cache = TagCache()
+
+        # Start preloading tags in background
+        self.tag_cache.preload(self.image_files)
 
         # Setup main window
         self.setWindowTitle("Image Viewer")
@@ -97,6 +181,12 @@ class ImageViewer(QMainWindow):
 
     def load_image(self, path):
         """Load an image file, handling RAW formats via exiftool and EXIF orientation."""
+        # Check cache first
+        cached_img = self.image_cache.get(path)
+        if cached_img is not None:
+            return cached_img
+
+        # Load from disk
         try:
             # Try loading directly with PIL first
             try:
@@ -104,6 +194,8 @@ class ImageViewer(QMainWindow):
                 img.load()  # Force load to catch any issues
                 # Apply EXIF orientation (handles portrait/rotated images)
                 img = ImageOps.exif_transpose(img)
+                # Cache the loaded image
+                self.image_cache.put(path, img)
                 return img
             except Exception:
                 # If PIL fails, try extracting preview from RAW using exiftool
@@ -116,6 +208,8 @@ class ImageViewer(QMainWindow):
                             img = Image.open(io.BytesIO(result))
                             # Apply EXIF orientation for RAW preview
                             img = ImageOps.exif_transpose(img)
+                            # Cache the loaded image
+                            self.image_cache.put(path, img)
                             return img
                 raise
         except Exception as e:
@@ -135,19 +229,7 @@ class ImageViewer(QMainWindow):
 
     def get_file_tags(self, path):
         """Get color tags for a file."""
-        try:
-            meta = OSXMetaData(str(path))
-            tags = meta.tags
-
-            # Match tags to our color mapping
-            result = []
-            for num, (tag_obj, color) in COLOR_TAGS.items():
-                if tag_obj in tags:
-                    result.append((tag_obj.name, color))
-            return result
-        except Exception as e:
-            print(f"Error reading tags: {e}", file=sys.stderr)
-            return []
+        return self.tag_cache.get(path)
 
     def set_file_tag(self, path, tag_number):
         """Set a color tag on a file (toggles if already set)."""
@@ -165,7 +247,8 @@ class ImageViewer(QMainWindow):
             else:
                 meta.tags = list(current_tags) + [tag_obj]
 
-            # Refresh the status bar to show updated tags
+            # Invalidate cache and refresh the status bar
+            self.tag_cache.invalidate(path)
             tags = self.get_file_tags(path)
             tag_html = self.get_tag_html(tags)
             status_text = f"{self.current_index + 1}/{len(self.image_files)} - {path.name}{tag_html}"
@@ -183,7 +266,8 @@ class ImageViewer(QMainWindow):
             color_tag_objs = [tag_obj for tag_obj, _ in COLOR_TAGS.values()]
             meta.tags = [t for t in current_tags if t not in color_tag_objs]
 
-            # Refresh the status bar
+            # Invalidate cache and refresh the status bar
+            self.tag_cache.invalidate(path)
             status_text = f"{self.current_index + 1}/{len(self.image_files)} - {path.name}"
             self.status_label.setText(status_text)
 
@@ -225,6 +309,39 @@ class ImageViewer(QMainWindow):
             return
 
         self.update_display()
+
+        # Preload adjacent images in background
+        self.preload_images()
+
+    def preload_images(self):
+        """Preload adjacent images in background threads."""
+        # Determine which images to preload (2-3 in each direction)
+        indices_to_preload = []
+
+        # Next images
+        for offset in range(1, 4):
+            idx = self.current_index + offset
+            if idx < len(self.image_files):
+                indices_to_preload.append(idx)
+
+        # Previous images
+        for offset in range(1, 4):
+            idx = self.current_index - offset
+            if idx >= 0:
+                indices_to_preload.append(idx)
+
+        # Start background threads to load these images
+        for idx in indices_to_preload:
+            path = self.image_files[idx]
+            # Skip if already cached
+            if self.image_cache.get(path) is not None:
+                continue
+
+            # Load in background thread
+            def load_worker(p=path):
+                self.load_image(p)
+
+            Thread(target=load_worker, daemon=True).start()
 
     def update_display(self):
         """Update the display with the current image scaled to fit window."""

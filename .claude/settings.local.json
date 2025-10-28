@@ -11,7 +11,9 @@
       "Bash(chmod:*)",
       "Bash(uv run:*)",
       "Bash(/Users/jmelis/personal/git/organize-media/organize_media.sh:*)",
-      "Read(//private/tmp/test-organize/**)"
+      "Read(//private/tmp/test-organize/**)",
+      "Bash(git mv:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

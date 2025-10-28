@@ -76,10 +76,10 @@ def find_corresponding_raf(jpg_path: Path) -> Optional[Path]:
 
 
 def discover_jpg_files(source_dir: Path) -> List[Path]:
-    """Discover all JPG files in source directory."""
+    """Discover all JPG files in source directory (non-recursive)."""
     jpg_files = []
     for ext in ['.jpg', '.jpeg', '.JPG', '.JPEG']:
-        jpg_files.extend(source_dir.rglob(f'*{ext}'))
+        jpg_files.extend(source_dir.glob(f'*{ext}'))
     return sorted(jpg_files)
 
 
