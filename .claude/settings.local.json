@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/jmelis/Pictures/2025/2025-10-26/**)",
+      "Bash(time exiftool:*)",
+      "Bash(xargs time exiftool:*)",
+      "Bash(for:*)",
+      "Bash(do time exiftool -EXIF:DateTimeOriginal ~/Pictures/2025/2025-10-26/raf/DSCF5000.RAF)",
+      "Bash(/dev/null)",
+      "Bash(done)",
+      "Bash(chmod:*)",
+      "Bash(uv run:*)",
+      "Bash(/Users/jmelis/personal/git/organize-media/organize_media.sh:*)",
+      "Read(//private/tmp/test-organize/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
