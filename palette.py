@@ -9,7 +9,7 @@
 Process tagged images based on macOS color tags.
 
 Usage:
-    ./process-tagged-images.py SOURCE_DIR [TARGET_DIR] [--dry-run]
+    ./palette.py SOURCE_DIR [TARGET_DIR] [--dry-run]
 
 If TARGET_DIR is not provided, subdirectories will be created in SOURCE_DIR.
 
@@ -216,7 +216,7 @@ def process_tagged_images(
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="process-tagged-images",
+        prog="palette",
         description="Process tagged images based on macOS color tags"
     )
     parser.add_argument(

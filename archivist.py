@@ -346,7 +346,7 @@ def organize_media(
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="organize-media",
+        prog="archivist",
         description="Organize media files by date into YYYY/YYYY-MM-DD directory structure"
     )
     parser.add_argument(

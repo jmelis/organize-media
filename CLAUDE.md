@@ -5,31 +5,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Overview
 
 This is a media organization toolkit with three main tools:
-1. **organize_media.py** - Automatically sorts photos/videos by date into YYYY/YYYY-MM-DD structure
-2. **image-viewer.py** - Fast JPEG viewer with macOS color tagging support
-3. **process-tagged-images.py** - Batch processes images based on their color tags
+1. **archivist.py** - Automatically sorts photos/videos by date into YYYY/YYYY-MM-DD structure
+2. **lightbox.py** - Fast JPEG viewer with macOS color tagging support
+3. **palette.py** - Batch processes images based on their color tags
 
 For user documentation, see README.md.
 
-## Running the Script
+## Running the Scripts
 
 The script uses uv's inline script feature for dependency management:
 
 ```bash
 # Basic usage
-./organize_media.py SOURCE_DIR TARGET_DIR
+./archivist.py SOURCE_DIR TARGET_DIR
 
 # Dry run (see what would happen without moving files)
-./organize_media.py SOURCE_DIR TARGET_DIR --dry-run
+./archivist.py SOURCE_DIR TARGET_DIR --dry-run
 
 # Group by file extension (optional)
-./organize_media.py SOURCE_DIR TARGET_DIR --ext
+./archivist.py SOURCE_DIR TARGET_DIR --ext
 
 # Adjust batch size for progress updates (default: 50)
-./organize_media.py SOURCE_DIR TARGET_DIR --batch-size 40
+./archivist.py SOURCE_DIR TARGET_DIR --batch-size 40
 
 # Skip immutable flag check (if you know files can be moved)
-./organize_media.py SOURCE_DIR TARGET_DIR --skip-flag-check
+./archivist.py SOURCE_DIR TARGET_DIR --skip-flag-check
 ```
 
 By default, files are placed directly in date folders: `YYYY/YYYY-MM-DD/filename`. Use `--ext` to group by extension within date folders.
@@ -90,12 +90,11 @@ Photos are processed in configurable batches via ExifToolHelper (`extract_photo_
 - `exiftool`: External binary (must be installed separately)
 - `ffmpeg`: External binary for video metadata (must be installed separately)
 
-## Image Viewer (image-viewer.py)
+## Image Viewer (lightbox.py)
 
 A PyQt5-based JPEG viewer for reviewing and tagging photos.
 
 **Key Components:**
-- `ColorTagIndicator`: Widget that displays colored dots for active tags
 - `ImageViewer`: Main window with image display and keyboard handling
 - Uses `osxmetadata` library to read/write macOS Finder tags
 - Only displays JPEG files (`.jpg`, `.jpeg`)
@@ -105,8 +104,9 @@ A PyQt5-based JPEG viewer for reviewing and tagging photos.
 - Numbers 1-7 apply color tags (Red, Orange, Yellow, Green, Blue, Purple, Gray)
 - Number 0 clears all tags
 - H key shows help dialog
+- PgUp/PgDn to jump to first/last image
 
-## Tag Processor (process-tagged-images.py)
+## Tag Processor (palette.py)
 
 Batch processes images based on macOS color tags.
 
@@ -129,6 +129,6 @@ Contains film simulation recipes (Fujifilm camera presets) - not related to the 
 ## Workflow
 
 The complete workflow is:
-1. Import photos → `organize_media.py` (organize by date)
-2. Review photos → `image-viewer.py` (apply color tags)
-3. Process tags → `process-tagged-images.py` (sort into output folders)
+1. Import photos → `archivist.py` (organize by date)
+2. Review photos → `lightbox.py` (apply color tags)
+3. Process tags → `palette.py` (sort into output folders)

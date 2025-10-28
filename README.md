@@ -4,13 +4,13 @@ A collection of Python scripts for organizing, viewing, and processing photos us
 
 ## Tools
 
-### 1. organize_media.py - Date-based Media Organization
+### 1. archivist.py - Date-based Media Organization
 
 Automatically organizes photos and videos into a date-based directory structure by extracting metadata.
 
 **Usage:**
 ```bash
-./organize_media.py SOURCE_DIR TARGET_DIR [--dry-run] [--ext]
+./archivist.py SOURCE_DIR TARGET_DIR [--dry-run] [--ext]
 ```
 
 **Features:**
@@ -24,19 +24,19 @@ Automatically organizes photos and videos into a date-based directory structure 
 **Example:**
 ```bash
 # Preview what would happen
-./organize_media.py ~/Downloads/photos ~/Pictures/organized --dry-run
+./archivist.py ~/Downloads/photos ~/Pictures/organized --dry-run
 
 # Actually organize the files
-./organize_media.py ~/Downloads/photos ~/Pictures/organized
+./archivist.py ~/Downloads/photos ~/Pictures/organized
 ```
 
-### 2. image-viewer.py - Tagged Image Viewer
+### 2. lightbox.py - Tagged Image Viewer
 
 A fast image viewer for JPEGs with built-in macOS color tagging support.
 
 **Usage:**
 ```bash
-./image-viewer.py <file_or_directory>
+./lightbox.py <file_or_directory>
 ```
 
 **Keyboard Shortcuts:**
@@ -62,13 +62,13 @@ A fast image viewer for JPEGs with built-in macOS color tagging support.
 - Tags are saved to macOS Finder metadata
 - JPEG-only display (filters out RAW files)
 
-### 3. process-tagged-images.py - Batch Process Tagged Images
+### 3. palette.py - Batch Process Tagged Images
 
 Processes images based on their color tags, copying or moving them to appropriate directories.
 
 **Usage:**
 ```bash
-./process-tagged-images.py SOURCE_DIR [TARGET_DIR] [--dry-run]
+./palette.py SOURCE_DIR [TARGET_DIR] [--dry-run]
 ```
 
 If `TARGET_DIR` is not provided, subdirectories will be created in `SOURCE_DIR`.
@@ -93,14 +93,14 @@ If `TARGET_DIR` is not provided, subdirectories will be created in `SOURCE_DIR`.
 1. **Import and Organize by Date**
    ```bash
    # Import photos from camera/SD card and organize by date
-   ./organize_media.py ~/Downloads/camera ~/Pictures/2025 --dry-run
-   ./organize_media.py ~/Downloads/camera ~/Pictures/2025
+   ./archivist.py ~/Downloads/camera ~/Pictures/2025 --dry-run
+   ./archivist.py ~/Downloads/camera ~/Pictures/2025
    ```
 
 2. **Review and Tag Images**
    ```bash
    # Open the organized folder in the image viewer
-   ./image-viewer.py ~/Pictures/2025/2025-10-28/
+   ./lightbox.py ~/Pictures/2025/2025-10-28/
 
    # Use keyboard shortcuts to tag images:
    # - Press 1 for keepers (red tag)
@@ -113,13 +113,13 @@ If `TARGET_DIR` is not provided, subdirectories will be created in `SOURCE_DIR`.
 3. **Process Tagged Images**
    ```bash
    # Preview what will happen (creates subdirectories in source folder)
-   ./process-tagged-images.py ~/Pictures/2025/2025-10-28 --dry-run
+   ./palette.py ~/Pictures/2025/2025-10-28 --dry-run
 
    # Process the tagged images (in-place)
-   ./process-tagged-images.py ~/Pictures/2025/2025-10-28
+   ./palette.py ~/Pictures/2025/2025-10-28
 
    # Or specify a different output directory
-   ./process-tagged-images.py ~/Pictures/2025/2025-10-28 ~/output
+   ./palette.py ~/Pictures/2025/2025-10-28 ~/output
    ```
 
 4. **Results**
@@ -158,7 +158,7 @@ All scripts use `uv` for dependency management with inline script metadata. Depe
 
 3. Make scripts executable:
    ```bash
-   chmod +x organize_media.py image-viewer.py process-tagged-images.py
+   chmod +x archivist.py lightbox.py palette.py
    ```
 
 4. Run any script - dependencies will be installed automatically on first run.

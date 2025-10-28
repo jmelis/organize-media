@@ -12,7 +12,7 @@
 Simple image viewer with arrow key navigation and fullscreen toggle.
 
 Usage:
-    ./image-viewer.py <file_or_directory>
+    ./lightbox.py <file_or_directory>
 
 Keys:
     Left/Right Arrow: Navigate between images
