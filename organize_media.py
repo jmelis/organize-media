@@ -3,6 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = [
 #   "pyexiftool",
+#   "tqdm",
 # ]
 # ///
 
@@ -13,8 +14,10 @@ Extracts dates from EXIF metadata (photos) or creation time (videos).
 
 import argparse
 import filecmp
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from collections import defaultdict
@@ -23,6 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import exiftool
+from tqdm import tqdm
 
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".arw", ".sr2", ".raf"}
 VIDEO_EXTENSIONS = {".mp4", ".mov"}
@@ -50,32 +54,83 @@ def discover_files(source_dir: Path) -> Tuple[List[Path], List[Path]]:
     return photos, videos
 
 
-def extract_photo_dates(files: List[Path], et: exiftool.ExifToolHelper) -> Dict[Path, datetime]:
+def check_immutable_flags(files: List[Path], sample_size: int = 100) -> bool:
+    """
+    Check if any files have the immutable flag set (macOS 'uchg' flag).
+    Samples files for performance on large datasets.
+    Returns True if immutable flags found.
+    """
+    # Sample files to check (all files if small dataset)
+    files_to_check = files if len(files) <= 1000 else files[:sample_size]
+
+    # Check for UF_IMMUTABLE (user immutable) or SF_IMMUTABLE (system immutable)
+    immutable_flags = 0
+    if hasattr(stat, 'UF_IMMUTABLE'):
+        immutable_flags |= stat.UF_IMMUTABLE
+    if hasattr(stat, 'SF_IMMUTABLE'):
+        immutable_flags |= stat.SF_IMMUTABLE
+
+    if immutable_flags == 0:
+        # Not on macOS or flags not available
+        return False
+
+    for file_path in files_to_check:
+        try:
+            file_stat = os.stat(file_path)
+            if hasattr(file_stat, 'st_flags') and (file_stat.st_flags & immutable_flags):
+                return True
+        except (OSError, AttributeError):
+            # Skip files we can't stat
+            continue
+
+    return False
+
+
+def extract_photo_dates(
+    files: List[Path],
+    et: exiftool.ExifToolHelper,
+    batch_size: int = 50
+) -> Dict[Path, datetime]:
     """
     Extract DateTimeOriginal from photo files using batched ExifTool calls.
+    Displays progress using tqdm progress bar.
     Returns dict mapping file path to datetime.
+
+    Args:
+        files: List of photo file paths
+        et: ExifToolHelper instance
+        batch_size: Number of photos to process per batch (default 50)
     """
     if not files:
         return {}
 
     tag = "EXIF:DateTimeOriginal"
     results = {}
+    total = len(files)
 
     try:
-        # Batch process all files at once
-        metadata_list = et.get_tags(files, tags=tag)
+        # Process in batches to show progress
+        with tqdm(total=total, desc="Extracting EXIF", unit="photo") as pbar:
+            for i in range(0, total, batch_size):
+                batch = files[i:i + batch_size]
+                batch_end = min(i + batch_size, total)
 
-        for file_path, metadata in zip(files, metadata_list):
-            try:
-                date_str = metadata[tag]
+                metadata_list = et.get_tags(batch, tags=tag)
 
-                if not re.match(r"\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}", date_str):
-                    raise ValueError(f"Unexpected date format: {date_str}")
+                for file_path, metadata in zip(batch, metadata_list):
+                    try:
+                        date_str = metadata[tag]
 
-                results[file_path] = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-            except KeyError:
-                # File doesn't have EXIF:DateTimeOriginal
-                pass
+                        if not re.match(r"\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}", date_str):
+                            raise ValueError(f"Unexpected date format: {date_str}")
+
+                        results[file_path] = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                    except KeyError:
+                        # File doesn't have EXIF:DateTimeOriginal
+                        pass
+
+                # Update progress bar after each batch
+                pbar.update(len(batch))
     except Exception as e:
         # If batch processing fails entirely, we'll report it
         raise RuntimeError(f"Failed to extract EXIF data: {e}")
@@ -149,11 +204,21 @@ def organize_media(
     source_dir: Path,
     target_dir: Path,
     group_by_extension: bool = False,
-    dry_run: bool = False
+    dry_run: bool = False,
+    batch_size: int = 50,
+    skip_flag_check: bool = False
 ) -> int:
     """
     Main organizing logic.
     Returns number of errors encountered.
+
+    Args:
+        source_dir: Source directory containing media files
+        target_dir: Target directory for organized files
+        group_by_extension: Whether to group files by extension
+        dry_run: Show what would be done without moving files
+        batch_size: Number of photos to process per batch for progress updates
+        skip_flag_check: Skip checking for immutable flags on source files
     """
     if not source_dir.is_dir():
         print(f"Error: Source '{source_dir}' is not a directory", file=sys.stderr)
@@ -167,16 +232,29 @@ def organize_media(
     photos, videos = discover_files(source_dir)
     print(f"Found {len(photos)} photos, {len(videos)} videos")
 
+    # Check for immutable flags before processing
+    if not skip_flag_check:
+        all_files = photos + videos
+        if all_files and check_immutable_flags(all_files):
+            print(f"\n⚠️  Warning: Found files with immutable flags (uchg)")
+            print(f"These files cannot be moved until flags are removed.")
+            print(f"\nTo fix, run:")
+            print(f"  sudo chflags -R nouchg {source_dir}")
+            print()
+            response = input("Continue anyway? [y/N]: ").strip().lower()
+            if response not in ('y', 'yes'):
+                print("Aborted.")
+                return 0
+
     # Extract dates from all media files
     file_dates: Dict[Path, datetime] = {}
     errors: List[Tuple[Path, str]] = []
 
     # Process photos in batch
     if photos:
-        print("Extracting EXIF data from photos...")
         try:
             with exiftool.ExifToolHelper() as et:
-                photo_dates = extract_photo_dates(photos, et)
+                photo_dates = extract_photo_dates(photos, et, batch_size)
                 file_dates.update(photo_dates)
 
                 # Track photos that failed
@@ -189,8 +267,7 @@ def organize_media(
 
     # Process videos individually (ffmpeg doesn't batch well)
     if videos:
-        print("Extracting creation time from videos...")
-        for video in videos:
+        for video in tqdm(videos, desc="Processing videos", unit="video"):
             date = extract_video_date(video)
             if date:
                 file_dates[video] = date
@@ -292,6 +369,17 @@ def main():
         action="store_true",
         help="Don't group files by extension (default: group by extension)"
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=50,
+        help="Number of photos to process per batch for progress updates (default: 50)"
+    )
+    parser.add_argument(
+        "--skip-flag-check",
+        action="store_true",
+        help="Skip checking for immutable flags on source files"
+    )
 
     args = parser.parse_args()
 
@@ -299,7 +387,9 @@ def main():
         source_dir=args.source,
         target_dir=args.target,
         group_by_extension=not args.no_ext,
-        dry_run=args.dry_run
+        dry_run=args.dry_run,
+        batch_size=args.batch_size,
+        skip_flag_check=args.skip_flag_check
     )
 
     sys.exit(exit_code)
