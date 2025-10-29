@@ -19,6 +19,7 @@ Keys:
     PgUp/PgDn: Jump to first/last image
     F: Toggle fullscreen
     H: Show help
+    Y: Copy full path to clipboard
     Escape: Exit fullscreen or quit
     Q: Quit
     1-7: Apply color tags (Red, Orange, Yellow, Green, Blue, Purple, Gray)
@@ -33,7 +34,7 @@ from collections import OrderedDict
 from threading import Thread, Lock
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QStatusBar, QWidget, QHBoxLayout, QMessageBox
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPalette
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QCoreApplication
 from osxmetadata import (
     OSXMetaData,
     Tag,
@@ -412,6 +413,7 @@ Color Tagging:
 
 Other:
   H        Show this help
+  Y        Copy full path to clipboard
 
 Tags are saved to macOS Finder metadata."""
 
@@ -492,6 +494,16 @@ Tags are saved to macOS Finder metadata."""
             QTimer.singleShot(100, self.update_display)
         elif key == Qt.Key_H:
             self.show_help()
+        elif key == Qt.Key_Y:
+            # Copy full path to clipboard
+            path = self.image_files[self.current_index]
+            clipboard = QApplication.clipboard()
+            clipboard.setText(str(path.absolute()))
+            # Show feedback in status bar
+            original_text = self.status_label.text()
+            self.status_label.setText(f"Copied path to clipboard: {path.absolute()}")
+            # Restore original status after 2 seconds
+            QTimer.singleShot(2000, lambda: self.status_label.setText(original_text))
         elif key == Qt.Key_Escape:
             if self.isFullScreen():
                 self.showNormal()
