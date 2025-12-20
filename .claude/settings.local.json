@@ -13,7 +13,11 @@
       "Bash(/Users/jmelis/personal/git/organize-media/organize_media.sh:*)",
       "Read(//private/tmp/test-organize/**)",
       "Bash(git mv:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python3:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(head:*)"
     ],
     "deny": [],
     "ask": []

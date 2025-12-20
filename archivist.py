@@ -17,10 +17,10 @@ import filecmp
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -54,36 +54,25 @@ def discover_files(source_dir: Path) -> Tuple[List[Path], List[Path]]:
     return photos, videos
 
 
-def check_immutable_flags(files: List[Path], sample_size: int = 100) -> bool:
+def check_immutable_flags(source_dir: Path) -> bool:
     """
     Check if any files have the immutable flag set (macOS 'uchg' flag).
-    Samples files for performance on large datasets.
+    Uses native find command for reliable macOS flag detection.
     Returns True if immutable flags found.
     """
-    # Sample files to check (all files if small dataset)
-    files_to_check = files if len(files) <= 1000 else files[:sample_size]
-
-    # Check for UF_IMMUTABLE (user immutable) or SF_IMMUTABLE (system immutable)
-    immutable_flags = 0
-    if hasattr(stat, 'UF_IMMUTABLE'):
-        immutable_flags |= stat.UF_IMMUTABLE
-    if hasattr(stat, 'SF_IMMUTABLE'):
-        immutable_flags |= stat.SF_IMMUTABLE
-
-    if immutable_flags == 0:
-        # Not on macOS or flags not available
+    try:
+        result = subprocess.run(
+            ["/usr/bin/find", str(source_dir), "-type", "f", "-flags", "+uchg"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        # If there's any output, immutable files were found
+        return bool(result.stdout.strip())
+    except Exception:
+        # If find command fails, assume no immutable flags found
+        # (user might not be on macOS or find command not available)
         return False
-
-    for file_path in files_to_check:
-        try:
-            file_stat = os.stat(file_path)
-            if hasattr(file_stat, 'st_flags') and (file_stat.st_flags & immutable_flags):
-                return True
-        except (OSError, AttributeError):
-            # Skip files we can't stat
-            continue
-
-    return False
 
 
 def extract_photo_dates(
@@ -183,19 +172,43 @@ def calculate_target_path(
     return target / file_path.name
 
 
-def check_file_conflict(source: Path, target: Path) -> Optional[str]:
+def perform_move(source: Path, target: Path) -> Tuple[Path, Path, Optional[str]]:
+    """
+    Perform a single file move operation.
+    Returns (source, target, error_message) where error_message is None if successful.
+
+    Args:
+        source: Source file path
+        target: Target file path
+    """
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(target))
+        return (source, target, None)
+    except PermissionError as e:
+        return (source, target, f"Permission denied: {e}")
+    except Exception as e:
+        return (source, target, f"Move failed: {e}")
+
+
+def check_file_conflict(source: Path, target: Path, check_duplicates: bool = False) -> Optional[str]:
     """
     Check if moving source to target would cause a conflict.
     Returns error message if conflict exists, None otherwise.
+
+    Args:
+        source: Source file path
+        target: Target file path
+        check_duplicates: If True, use filecmp to detect if existing file is identical (expensive)
     """
     if target.parent.is_file():
         return f"Target directory {target.parent} is a file"
 
     if target.exists():
-        if filecmp.cmp(source, target, shallow=False):
+        if check_duplicates and filecmp.cmp(source, target, shallow=False):
             return None  # Files are identical, this is fine
         else:
-            return f"Target {target} exists with different contents"
+            return f"Target {target} already exists"
 
     return None
 
@@ -206,7 +219,9 @@ def organize_media(
     group_by_extension: bool = False,
     dry_run: bool = False,
     batch_size: int = 50,
-    skip_flag_check: bool = False
+    skip_flag_check: bool = False,
+    check_duplicates: bool = False,
+    overwrite: bool = False
 ) -> int:
     """
     Main organizing logic.
@@ -219,6 +234,8 @@ def organize_media(
         dry_run: Show what would be done without moving files
         batch_size: Number of photos to process per batch for progress updates
         skip_flag_check: Skip checking for immutable flags on source files
+        check_duplicates: Use expensive file comparison to detect duplicates (default: False)
+        overwrite: Skip conflict checks and overwrite existing files (default: False)
     """
     if not source_dir.is_dir():
         print(f"Error: Source '{source_dir}' is not a directory", file=sys.stderr)
@@ -234,8 +251,7 @@ def organize_media(
 
     # Check for immutable flags before processing
     if not skip_flag_check:
-        all_files = photos + videos
-        if all_files and check_immutable_flags(all_files):
+        if check_immutable_flags(source_dir):
             print(f"\n⚠️  Warning: Found files with immutable flags (uchg)")
             print(f"These files cannot be moved until flags are removed.")
             print(f"\nTo fix, run:")
@@ -281,14 +297,22 @@ def organize_media(
     for file_path, date in file_dates.items():
         target_path = calculate_target_path(file_path, date, target_dir, group_by_extension)
 
-        conflict = check_file_conflict(file_path, target_path)
-        if conflict:
-            if target_path.exists() and filecmp.cmp(file_path, target_path, shallow=False):
-                duplicates.append((file_path, target_path))
-            else:
-                errors.append((file_path, conflict))
-        else:
+        if overwrite:
+            # Skip conflict checks, just move/overwrite
             moves.append((file_path, target_path))
+        else:
+            conflict = check_file_conflict(file_path, target_path, check_duplicates)
+            if conflict:
+                # When check_duplicates is enabled and no conflict returned, it means files are identical
+                # When check_duplicates is disabled, we don't know if they're duplicates
+                errors.append((file_path, conflict))
+            else:
+                # No conflict - either target doesn't exist, or it's an identical file (when check_duplicates=True)
+                if target_path.exists():
+                    # Target exists and is identical (only possible when check_duplicates=True)
+                    duplicates.append((file_path, target_path))
+                else:
+                    moves.append((file_path, target_path))
 
     # Report what will happen
     print(f"\nPlanned operations:")
@@ -310,21 +334,26 @@ def organize_media(
             if len(duplicates) > 5:
                 print(f"  ... and {len(duplicates) - 5} more")
     else:
-        # Execute moves
+        # Execute moves with thread pool for parallel I/O
         print("\nMoving files...")
         move_errors = 0
 
-        for source, target in moves:
-            try:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(source), str(target))
-                print(f"  {source.name} -> {target}")
-            except PermissionError as e:
-                errors.append((source, f"Permission denied: {e}"))
-                move_errors += 1
-            except Exception as e:
-                errors.append((source, f"Move failed: {e}"))
-                move_errors += 1
+        # Use ThreadPoolExecutor for parallel moves (8 threads for balanced I/O on separate volumes)
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            # Submit all move tasks
+            futures = {
+                executor.submit(perform_move, source, target): (source, target)
+                for source, target in moves
+            }
+
+            # Process completed moves with progress bar
+            with tqdm(total=len(moves), desc="Progress", unit="file") as pbar:
+                for future in as_completed(futures):
+                    source, target, error = future.result()
+                    if error:
+                        errors.append((source, error))
+                        move_errors += 1
+                    pbar.update(1)
 
         if move_errors == 0:
             print("All moves completed successfully!")
@@ -380,6 +409,16 @@ def main():
         action="store_true",
         help="Skip checking for immutable flags on source files"
     )
+    parser.add_argument(
+        "--check-duplicates",
+        action="store_true",
+        help="Use file comparison to detect duplicates (expensive, default: disabled)"
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files without checking (fastest, default: disabled)"
+    )
 
     args = parser.parse_args()
 
@@ -389,7 +428,9 @@ def main():
         group_by_extension=args.ext,
         dry_run=args.dry_run,
         batch_size=args.batch_size,
-        skip_flag_check=args.skip_flag_check
+        skip_flag_check=args.skip_flag_check,
+        check_duplicates=args.check_duplicates,
+        overwrite=args.overwrite
     )
 
     sys.exit(exit_code)

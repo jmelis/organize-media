@@ -14,10 +14,10 @@ Usage:
 If TARGET_DIR is not provided, subdirectories will be created in SOURCE_DIR.
 
 Tag processing:
-    Red (1):    Copy JPG to {target}/selection
-    Orange (2): Copy RAF to {target}/process-raw
-    Yellow (3): Copy JPG to {target}/process-jpg
-    Gray (7):   MOVE both JPG and RAF to {target}/delete
+    Red (1):    Move both JPG and RAF to {target}/selection
+    Orange (2): Move only JPG to {target}/selection
+    Yellow (3): Move only RAF to {target}/selection
+    Gray (7):   Move both JPG and RAF to {target}/delete
 """
 
 import argparse
@@ -44,10 +44,10 @@ TAG_GRAY = Tag("Gray", FINDER_COLOR_GRAY)
 
 # Tag to action mapping
 TAG_ACTIONS = {
-    TAG_RED: ("selection", "jpg", "copy"),       # Copy JPG to selection
-    TAG_ORANGE: ("process-raw", "raf", "copy"),  # Copy RAF to process-raw
-    TAG_YELLOW: ("process-jpg", "jpg", "copy"),  # Copy JPG to process-jpg
-    TAG_GRAY: ("delete", "both", "move"),        # Move both to delete
+    TAG_RED: ("selection", "both", "move"),      # Move both JPG and RAF to selection
+    TAG_ORANGE: ("selection", "jpg", "move"),    # Move JPG to selection
+    TAG_YELLOW: ("selection", "raf", "move"),    # Move RAF to selection
+    TAG_GRAY: ("delete", "both", "move"),        # Move both JPG and RAF to delete
 }
 
 

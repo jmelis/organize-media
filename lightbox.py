@@ -402,13 +402,13 @@ Navigation:
   Q / Esc     Quit (or exit fullscreen)
 
 Color Tagging:
-  1        Red tag (for selection)
-  2        Orange tag (for RAW processing)
-  3        Yellow tag (for JPG processing)
+  1        Red tag (move both JPG and RAW to selection)
+  2        Orange tag (move only JPG to selection)
+  3        Yellow tag (move only RAW to selection)
   4        Green tag
   5        Blue tag
   6        Purple tag
-  7        Gray tag (for deletion)
+  7        Gray tag (move both JPG and RAW to delete)
   0        Clear all tags
 
 Other:
@@ -521,6 +521,11 @@ Tags are saved to macOS Finder metadata."""
         self.update_display()
 
 
+def is_appledouble_file(file_path):
+    """Check if file is an AppleDouble metadata file."""
+    return file_path.name.startswith("._") and file_path.stat().st_size == 4096
+
+
 def collect_images(path):
     """Collect all image files from a file or directory."""
     path = Path(path)
@@ -534,7 +539,8 @@ def collect_images(path):
             # If a file is provided, show all images in its directory
             parent_dir = path.parent
             all_images = [f for f in parent_dir.iterdir()
-                         if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
+                         if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS
+                         and not is_appledouble_file(f)]
             # Find the starting index
             try:
                 start_index = all_images.index(path)
@@ -548,7 +554,8 @@ def collect_images(path):
     elif path.is_dir():
         # Collect all images from directory
         images = [f for f in path.iterdir()
-                 if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
+                 if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS
+                 and not is_appledouble_file(f)]
         if not images:
             print(f"Error: No images found in directory: {path}", file=sys.stderr)
             sys.exit(1)
