@@ -52,6 +52,37 @@ class ArchiveTests(unittest.TestCase):
                 wd.require_drive()
             run.assert_not_called()
 
+    def test_preview_confirmation_reuses_plan(self):
+        ops = [('move', self.media(), self.drive / 'Export/img.jpg')]
+        with patch.object(wd.sys.stdin, 'isatty', return_value=True), patch('builtins.input', return_value='y'), patch.object(wd, 'execute', return_value=0) as execute:
+            self.assertEqual(wd.run_plan(ops, True), 0)
+            self.assertEqual(execute.call_count, 2)
+            self.assertIs(execute.call_args_list[0].args[0], ops)
+            self.assertIs(execute.call_args_list[1].args[0], ops)
+            self.assertTrue(execute.call_args_list[0].args[1])
+            self.assertFalse(execute.call_args_list[1].args[1])
+
+    def test_preview_defaults_to_no(self):
+        ops = [('move', self.media(), self.drive / 'Export/img.jpg')]
+        for answer in ('', 'n', 'yes', 'Y'):
+            with self.subTest(answer=answer), patch.object(wd.sys.stdin, 'isatty', return_value=True), patch('builtins.input', return_value=answer), patch.object(wd, 'execute', return_value=0) as execute, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(wd.run_plan(ops, True), 0)
+                execute.assert_called_once_with(ops, True)
+
+    def test_preview_eof_and_interrupt_cancel(self):
+        ops = [('move', self.media(), self.drive / 'Export/img.jpg')]
+        for error in (EOFError, KeyboardInterrupt):
+            with self.subTest(error=error), patch.object(wd.sys.stdin, 'isatty', return_value=True), patch('builtins.input', side_effect=error), patch.object(wd, 'execute', return_value=0) as execute, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(wd.run_plan(ops, True), 0)
+                execute.assert_called_once_with(ops, True)
+
+    def test_preview_noninteractive_never_prompts(self):
+        ops = [('move', self.media(), self.drive / 'Export/img.jpg')]
+        with patch.object(wd.sys.stdin, 'isatty', return_value=False), patch('builtins.input') as prompt, patch.object(wd, 'execute', return_value=0) as execute, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(wd.run_plan(ops, True), 0)
+            prompt.assert_not_called()
+            execute.assert_called_once_with(ops, True)
+
     def test_directory_local_raw_routing_and_case(self):
         self.media('camera/IMG.RAF')
         self.media('camera/IMG.JPG')

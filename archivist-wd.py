@@ -258,6 +258,25 @@ def execute(operations, dry_run, guard=require_drive):
     return int(bool(errors))
 
 
+def run_plan(operations, dry_run):
+    result = execute(operations, dry_run)
+    if not dry_run or not any(op[0] in {'copy', 'move', 'delete-indexed'} for op in operations):
+        return result
+    if not sys.stdin.isatty():
+        print('Preview only; files unchanged (non-interactive input).')
+        return result
+    try:
+        answer = input('\nExecute this plan now? Type y to continue [y/N]: ')
+    except (EOFError, KeyboardInterrupt):
+        answer = ''
+    if answer.strip() != 'y':
+        print('\nCancelled; files unchanged.')
+        return result
+    # Reuse the calculated plan. Execution still checks the mount, source
+    # signatures, destination collisions, and archived copies before deletion.
+    return execute(operations, False)
+
+
 def positive(value):
     number = int(value)
     if number < 1:
@@ -273,7 +292,7 @@ def main():
     modes.add_argument('--move', action='store_const', dest='mode', const='move', help='Move new files and delete verified indexed duplicates from source (default)')
     modes.add_argument('--delete-source', action='store_const', dest='mode', const='delete-source', help='Only delete verified indexed duplicates; keep unindexed files')
     parser.set_defaults(mode='move')
-    parser.add_argument('-n', '--dry-run', action='store_true', help='Read-only preview of every action')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='Preview every action, then optionally execute the same plan by typing y (default: no)')
     parser.add_argument('--threads', type=positive, default=1, help='Source hashing workers (default: 1)')
     parser.add_argument('--batch-size', type=positive, default=50)
     parser.add_argument('--db-env', type=Path, default=ENV_FILE, help='PhotoPrism .env with database credentials')
@@ -293,7 +312,7 @@ def main():
     index = fetch_index(media, args.db_env.expanduser())
     new = [m for m in media if not live_copies(m, index)]
     dates = get_dates(new, args.batch_size) if args.mode != 'delete-source' else {}
-    return execute(plan(media, index, dates, args.mode), args.dry_run)
+    return run_plan(plan(media, index, dates, args.mode), args.dry_run)
 
 
 if __name__ == '__main__':

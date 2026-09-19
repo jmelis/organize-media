@@ -79,7 +79,12 @@ unsupported files are left alone.
 ```
 
 `--move` (default), `--copy`, and `--delete-source` are mutually exclusive.
-Remove `--dry-run` to execute. Only hashing is parallelized; archive writes are
+With `--dry-run`, the plan and summary are shown first. In an interactive terminal,
+type `y` and Enter at the prompt to execute that same plan without recalculating
+source hashes or querying the database again. Enter alone, any other answer,
+Ctrl-C, or EOF leaves files unchanged. Non-interactive input stays preview-only.
+Execution still rechecks sources and verifies copies before deletion. Without
+`--dry-run`, execution starts immediately. Only hashing is parallelized; archive writes are
 sequential. Different files with colliding names receive `_2`, `_3`, etc. before
 the extension. Existing files are never overwritten, including collisions
 between files in the same import or a concurrently created destination.
