@@ -232,6 +232,8 @@ def plan(media, index, dates, mode):
 def execute(operations, dry_run, guard=require_drive):
     errors = 0
     for action, media, target in operations:
+        if action == 'skip-indexed':
+            continue
         detail = ', '.join(map(str, target)) if isinstance(target, list) else str(target or '')
         print(f'{"WOULD " if dry_run else ""}{action}: {media.path}' + (f' -> {detail}' if detail else ''))
         if action.startswith('error'):
@@ -251,7 +253,8 @@ def execute(operations, dry_run, guard=require_drive):
         except (OSError, RuntimeError) as error:
             errors += 1
             print(f'ERROR: {error}', file=sys.stderr)
-    print('Summary:', dict(Counter(op[0] for op in operations)), f'; errors: {errors}')
+    print('Summary:', dict(Counter(op[0] for op in operations)),
+          f'; total: {len(operations)} ; errors: {errors}')
     return int(bool(errors))
 
 
