@@ -65,11 +65,11 @@ a usable metadata date are reported and retained. Symlinks, sidecars, and
 unsupported files are left alone.
 
 ```bash
-# Preview every operation (default is copy, with one hashing thread)
+# Preview every operation (default is move, with one hashing thread)
 ./archivist-wd.py ~/Desktop/"2025-10 London" --dry-run
 
 # Copy new files; parallel source hashing is optional (use 1 for a spinning HDD)
-./archivist-wd.py SOURCE --threads 4
+./archivist-wd.py SOURCE --copy --threads 4
 
 # Move new files after verifying their copied contents; indexed files stay skipped
 ./archivist-wd.py SOURCE --move --dry-run
@@ -78,7 +78,7 @@ unsupported files are left alone.
 ./archivist-wd.py SOURCE --delete-source --dry-run
 ```
 
-`--copy` (default), `--move`, and `--delete-source` are mutually exclusive.
+`--move` (default), `--copy`, and `--delete-source` are mutually exclusive.
 Remove `--dry-run` to execute. Only hashing is parallelized; archive writes are
 sequential. Different files with colliding names receive `_2`, `_3`, etc. before
 the extension. Existing files are never overwritten, including collisions
