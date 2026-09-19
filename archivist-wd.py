@@ -218,7 +218,7 @@ def plan(media, index, dates, mode):
     for item in media:
         copies = live_copies(item, index)
         if copies:
-            operations.append(('delete-source' if mode == 'delete-source' else 'skip-indexed', item, copies))
+            operations.append(('delete-indexed' if mode in {'move', 'delete-source'} else 'skip-indexed', item, copies))
         elif mode == 'delete-source':
             operations.append(('keep-unindexed', item, None))
         elif item.path not in dates:
@@ -238,11 +238,11 @@ def execute(operations, dry_run, guard=require_drive):
         print(f'{"WOULD " if dry_run else ""}{action}: {media.path}' + (f' -> {detail}' if detail else ''))
         if action.startswith('error'):
             errors += 1
-        if dry_run or action not in {'copy', 'move', 'delete-source'}:
+        if dry_run or action not in {'copy', 'move', 'delete-indexed'}:
             continue
         try:
             guard()
-            if action == 'delete-source':
+            if action == 'delete-indexed':
                 delete_indexed(media, target)
             else:
                 copy_verified(media, target)
@@ -270,7 +270,7 @@ def main():
     parser.add_argument('source', type=Path)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--copy', action='store_const', dest='mode', const='copy', help='Copy new files and retain their sources')
-    modes.add_argument('--move', action='store_const', dest='mode', const='move', help='Copy and verify new files, then remove their sources; indexed files skipped (default)')
+    modes.add_argument('--move', action='store_const', dest='mode', const='move', help='Move new files and delete verified indexed duplicates from source (default)')
     modes.add_argument('--delete-source', action='store_const', dest='mode', const='delete-source', help='Only delete verified indexed duplicates; keep unindexed files')
     parser.set_defaults(mode='move')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Read-only preview of every action')

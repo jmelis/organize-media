@@ -107,10 +107,10 @@ class ArchiveTests(unittest.TestCase):
         archived = self.drive / 'Other/renamed.jpg'
         archived.write_bytes(b'photo')
         index = {m.digest: [(archived, 5)]}
-        for mode in ('copy', 'move'):
-            self.assertEqual(wd.plan([m], index, {}, mode)[0][0], 'skip-indexed')
+        self.assertEqual(wd.plan([m], index, {}, 'copy')[0][0], 'skip-indexed')
+        self.assertEqual(wd.plan([m], index, {}, 'move')[0][0], 'delete-indexed')
         ops = wd.plan([m, new], index, {}, 'delete-source')
-        self.assertEqual([op[0] for op in ops], ['delete-source', 'keep-unindexed'])
+        self.assertEqual([op[0] for op in ops], ['delete-indexed', 'keep-unindexed'])
         self.assertEqual(self.run_ops(ops, True), 0)
         self.assertTrue(m.path.exists())
         self.assertEqual(self.run_ops(ops), 0)
@@ -122,9 +122,26 @@ class ArchiveTests(unittest.TestCase):
         m = self.media()
         archived = self.drive / 'Export/img.jpg'
         archived.write_bytes(b'wrong')  # Same size; database still claims original hash.
-        ops = wd.plan([m], {m.digest: [(archived, 5)]}, {}, 'delete-source')
-        self.assertEqual(self.run_ops(ops), 1)
-        self.assertTrue(m.path.exists())
+        for mode in ('move', 'delete-source'):
+            ops = wd.plan([m], {m.digest: [(archived, 5)]}, {}, mode)
+            self.assertEqual(self.run_ops(ops), 1)
+            self.assertTrue(m.path.exists())
+
+    def test_move_deletes_indexed_and_moves_new(self):
+        duplicate, new = self.media(), self.media('new.jpg', b'new')
+        archived = self.drive / 'Other/existing.jpg'
+        archived.write_bytes(b'photo')
+        ops = wd.plan([duplicate, new], {duplicate.digest: [(archived, 5)]},
+                      {new.path: datetime(2025, 1, 2)}, 'move')
+        self.assertEqual([op[0] for op in ops], ['delete-indexed', 'move'])
+        self.assertEqual(self.run_ops(ops, True), 0)
+        self.assertTrue(duplicate.path.exists())
+        self.assertTrue(new.path.exists())
+        self.assertEqual(self.run_ops(ops), 0)
+        self.assertFalse(duplicate.path.exists())
+        self.assertFalse(new.path.exists())
+        self.assertEqual(archived.read_bytes(), b'photo')
+        self.assertEqual(ops[1][2].read_bytes(), b'new')
 
     def test_missing_indexed_file_is_not_duplicate(self):
         m = self.media()

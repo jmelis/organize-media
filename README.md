@@ -71,7 +71,7 @@ unsupported files are left alone.
 # Copy new files; parallel source hashing is optional (use 1 for a spinning HDD)
 ./archivist-wd.py SOURCE --copy --threads 4
 
-# Move new files after verifying their copied contents; indexed files stay skipped
+# Move new files and delete verified indexed duplicates from the source
 ./archivist-wd.py SOURCE --move --dry-run
 
 # Only delete already-indexed duplicates; leave unindexed files untouched
@@ -92,8 +92,9 @@ Credentials and optional `MARIADB_PORT` come from
 `Raws`, `Export`, or `Other` trees are considered, regardless of filename.
 An indexed copy must still exist with the expected size to count as a match.
 
-Copy/skip decisions trust the stored hash. Before `--delete-source` actually
-removes anything, it reads and hashes the archived copy too; a stale index
+Copy/skip decisions trust the stored hash. Both `--move` and `--delete-source`
+report indexed duplicates as `delete-indexed`. Before deleting these sources,
+the script reads and hashes the archived copy too; a stale index
 cannot authorize deletion. Dry-run lists candidate deletions without doing this
 extra archive-content verification. New copies are staged and verified before
 publication; move removes the source only after successful copying. The script
