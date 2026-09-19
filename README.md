@@ -88,6 +88,9 @@ Execution still rechecks sources and verifies copies before deletion. Without
 sequential. Different files with colliding names receive `_2`, `_3`, etc. before
 the extension. Existing files are never overwritten, including collisions
 between files in the same import or a concurrently created destination.
+After a successful move or indexed-source deletion, empty descendant directories
+under the source are removed. The source directory itself is retained. Dry-run
+reports directories that would be removed and leaves them in place.
 
 The script hashes source files with whole-file SHA-1 and queries PhotoPrism's
 stored hashes directly over `127.0.0.1:3306`, using a read-only transaction.

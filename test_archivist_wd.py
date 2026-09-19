@@ -41,9 +41,9 @@ class ArchiveTests(unittest.TestCase):
         digest, sig = wd.hash_file(path)
         return wd.Media(path, tree, digest, sig)
 
-    def run_ops(self, ops, dry=False):
+    def run_ops(self, ops, dry=False, source_root=None):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            return wd.execute(ops, dry, guard=lambda: None)
+            return wd.execute(ops, dry, guard=lambda: None, source_root=source_root)
 
     def test_missing_raws_exits_before_diskutil(self):
         (self.drive / 'Raws').rmdir()
@@ -120,9 +120,37 @@ class ArchiveTests(unittest.TestCase):
     def test_move_verified_copy(self):
         m = self.media()
         target = self.drive / 'Export/2025/2025-01-02/img.jpg'
-        self.assertEqual(self.run_ops([('move', m, target)]), 0)
+        self.assertEqual(self.run_ops([('move', m, target)], source_root=self.source), 0)
         self.assertFalse(m.path.exists())
         self.assertEqual(target.read_bytes(), b'photo')
+
+    def test_move_removes_empty_source_directories_but_not_source_root(self):
+        m = self.media('nested/deeper/img.jpg')
+        target = self.drive / 'Export/2025/2025-01-02/img.jpg'
+        self.assertEqual(self.run_ops([('move', m, target)], source_root=self.source), 0)
+        self.assertFalse(m.path.exists())
+        self.assertFalse((self.source / 'nested/deeper').exists())
+        self.assertFalse((self.source / 'nested').exists())
+        self.assertTrue(self.source.exists())
+
+    def test_delete_indexed_removes_empty_source_directories(self):
+        m = self.media('nested/img.jpg')
+        archived = self.drive / 'Other/existing.jpg'
+        archived.write_bytes(b'photo')
+        ops = wd.plan([m], {m.digest: [(archived, 5)]}, {}, 'delete-source')
+        self.assertEqual(self.run_ops(ops, source_root=self.source), 0)
+        self.assertFalse(m.path.exists())
+        self.assertFalse((self.source / 'nested').exists())
+
+    def test_dry_run_reports_but_does_not_remove_empty_directories(self):
+        m = self.media('nested/img.jpg')
+        target = self.drive / 'Export/2025/2025-01-02/img.jpg'
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(wd.execute([('move', m, target)], True,
+                                        guard=lambda: None, source_root=self.source), 0)
+        self.assertIn('WOULD remove-empty-dir:', output.getvalue())
+        self.assertTrue((self.source / 'nested').exists())
 
     def test_concurrent_collision_never_overwrites_or_deletes(self):
         m = self.media()

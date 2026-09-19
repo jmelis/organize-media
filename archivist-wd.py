@@ -229,8 +229,38 @@ def plan(media, index, dates, mode):
     return operations
 
 
-def execute(operations, dry_run, guard=require_drive):
+def cleanup_empty_dirs(removed_paths, source_root, dry_run):
+    """Remove empty source descendants, deepest first; never remove source_root."""
+    if source_root is None:
+        return
+    root = source_root.resolve()
+    candidates = set()
+    removed = {path.resolve() for path in removed_paths}
+    for path in removed_paths:
+        current = path.parent.resolve()
+        while current != root and current.is_relative_to(root):
+            candidates.add(current)
+            current = current.parent
+    emptied = set()
+    for directory in sorted(candidates, key=lambda p: (len(p.parts), str(p)), reverse=True):
+        try:
+            if dry_run:
+                remaining = [entry for entry in directory.iterdir()
+                             if entry not in removed and entry not in emptied]
+                if not remaining:
+                    print(f'WOULD remove-empty-dir: {directory}')
+                    emptied.add(directory)
+            else:
+                directory.rmdir()
+                print(f'remove-empty-dir: {directory}')
+        except OSError:
+            # Non-empty or concurrently changed directories are left alone.
+            continue
+
+
+def execute(operations, dry_run, guard=require_drive, source_root=None):
     errors = 0
+    removed_paths = []
     for action, media, target in operations:
         if action == 'skip-indexed':
             continue
@@ -238,28 +268,38 @@ def execute(operations, dry_run, guard=require_drive):
         print(f'{"WOULD " if dry_run else ""}{action}: {media.path}' + (f' -> {detail}' if detail else ''))
         if action.startswith('error'):
             errors += 1
-        if dry_run or action not in {'copy', 'move', 'delete-indexed'}:
+        if dry_run:
+            if action in {'move', 'delete-indexed'}:
+                removed_paths.append(media.path)
+            continue
+        if action not in {'copy', 'move', 'delete-indexed'}:
             continue
         try:
             guard()
             if action == 'delete-indexed':
                 delete_indexed(media, target)
+                removed_paths.append(media.path)
             else:
                 copy_verified(media, target)
                 if action == 'move':
                     guard()
                     unchanged(media)
                     media.path.unlink()
+                    removed_paths.append(media.path)
         except (OSError, RuntimeError) as error:
             errors += 1
             print(f'ERROR: {error}', file=sys.stderr)
+    cleanup_empty_dirs(removed_paths, source_root, dry_run)
     print('Summary:', dict(Counter(op[0] for op in operations)),
           f'; total: {len(operations)} ; errors: {errors}')
     return int(bool(errors))
 
 
-def run_plan(operations, dry_run):
-    result = execute(operations, dry_run)
+def run_plan(operations, dry_run, source_root=None):
+    if source_root is None:
+        result = execute(operations, dry_run)
+    else:
+        result = execute(operations, dry_run, source_root=source_root)
     if not dry_run or not any(op[0] in {'copy', 'move', 'delete-indexed'} for op in operations):
         return result
     if not sys.stdin.isatty():
@@ -274,7 +314,9 @@ def run_plan(operations, dry_run):
         return result
     # Reuse the calculated plan. Execution still checks the mount, source
     # signatures, destination collisions, and archived copies before deletion.
-    return execute(operations, False)
+    if source_root is None:
+        return execute(operations, False)
+    return execute(operations, False, source_root=source_root)
 
 
 def positive(value):
@@ -312,7 +354,7 @@ def main():
     index = fetch_index(media, args.db_env.expanduser())
     new = [m for m in media if not live_copies(m, index)]
     dates = get_dates(new, args.batch_size) if args.mode != 'delete-source' else {}
-    return run_plan(plan(media, index, dates, args.mode), args.dry_run)
+    return run_plan(plan(media, index, dates, args.mode), args.dry_run, source)
 
 
 if __name__ == '__main__':
