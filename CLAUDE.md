@@ -30,6 +30,12 @@ The script uses uv's inline script feature for dependency management:
 
 # Skip immutable flag check (if you know files can be moved)
 ./archivist.py SOURCE_DIR TARGET_DIR --skip-flag-check
+
+# Delete source files that are already in the archive (identical content)
+./archivist.py SOURCE_DIR TARGET_DIR --delete-duplicates
+
+# Treat metadata-only differences (e.g. Lightroom XMP) as duplicates too
+./archivist.py SOURCE_DIR TARGET_DIR --delete-duplicates --compare image
 ```
 
 By default, files are placed directly in date folders: `YYYY/YYYY-MM-DD/filename`. Use `--ext` to group by extension within date folders.
@@ -68,7 +74,11 @@ The entire application is in `organize_media.py` - a self-contained uv script wi
 
 4. **Path Calculation** (`calculate_target_path`): Constructs target paths as `TARGET/YYYY/YYYY-MM-DD/[ext/]filename`
 
-5. **Conflict Detection** (`check_file_conflict`): Uses `filecmp.cmp` to identify identical files (duplicates) vs. conflicting files
+5. **Conflict Detection**: Files whose target path is already occupied are collected and compared via `compare_pairs` to separate duplicates from real conflicts
+   - `--check-duplicates` enables the (expensive) content comparison; without it every occupied target is an error
+   - `--compare bytes` (default) uses `filecmp.cmp`; `--compare image` uses `extract_image_hashes` (ExifTool `ImageDataHash` with `-api RequestAll=3`) so files differing only in metadata still count as duplicates, falling back to `filecmp.cmp` for formats with no image hash
+   - `--delete-duplicates` implies `--check-duplicates` and deletes source files judged duplicates; name collisions holding a different photo are still reported as errors, never deleted
+   - `--overwrite` skips conflict checks entirely
 
 6. **Execution**: Moves files using `shutil.move`, reports duplicates that can be safely deleted
 

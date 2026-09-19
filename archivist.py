@@ -191,26 +191,77 @@ def perform_move(source: Path, target: Path) -> Tuple[Path, Path, Optional[str]]
         return (source, target, f"Move failed: {e}")
 
 
-def check_file_conflict(source: Path, target: Path, check_duplicates: bool = False) -> Optional[str]:
+def extract_image_hashes(
+    files: List[Path],
+    et: exiftool.ExifToolHelper,
+    batch_size: int = 50
+) -> Dict[Path, str]:
     """
-    Check if moving source to target would cause a conflict.
-    Returns error message if conflict exists, None otherwise.
-
-    Args:
-        source: Source file path
-        target: Target file path
-        check_duplicates: If True, use filecmp to detect if existing file is identical (expensive)
+    Extract ImageDataHash (a hash of the image data only, ignoring metadata) for
+    each file using batched ExifTool calls.
+    Returns dict mapping file path to hash; files whose format doesn't support the
+    hash are simply absent from the result.
     """
-    if target.parent.is_file():
-        return f"Target directory {target.parent} is a file"
+    if not files:
+        return {}
 
-    if target.exists():
-        if check_duplicates and filecmp.cmp(source, target, shallow=False):
-            return None  # Files are identical, this is fine
+    tag = "File:ImageDataHash"
+    results: Dict[Path, str] = {}
+    total = len(files)
+
+    with tqdm(total=total, desc="Hashing image data", unit="file") as pbar:
+        for i in range(0, total, batch_size):
+            batch = files[i:i + batch_size]
+            metadata_list = et.get_tags(
+                batch, tags="ImageDataHash", params=["-api", "RequestAll=3"]
+            )
+
+            for file_path, metadata in zip(batch, metadata_list):
+                image_hash = metadata.get(tag)
+                if image_hash:
+                    results[file_path] = image_hash
+
+            pbar.update(len(batch))
+
+    return results
+
+
+def compare_pairs(
+    pairs: List[Tuple[Path, Path]],
+    compare_mode: str,
+    batch_size: int = 50
+) -> Dict[Tuple[Path, Path], bool]:
+    """
+    Compare (source, target) pairs and report which ones hold the same photo.
+
+    compare_mode:
+        "bytes" - files must be byte-for-byte identical
+        "image" - only the image data must match; metadata (XMP, EXIF edits
+                  written by Lightroom and friends) may differ. Falls back to a
+                  byte comparison for formats with no image data hash.
+    """
+    if compare_mode == "bytes":
+        return {
+            (source, target): filecmp.cmp(source, target, shallow=False)
+            for source, target in pairs
+        }
+
+    # Hash every file involved once, even if it appears in several pairs
+    unique_files = sorted({f for pair in pairs for f in pair})
+    with exiftool.ExifToolHelper() as et:
+        hashes = extract_image_hashes(unique_files, et, batch_size)
+
+    results = {}
+    for source, target in pairs:
+        source_hash = hashes.get(source)
+        target_hash = hashes.get(target)
+        if source_hash and target_hash:
+            results[(source, target)] = source_hash == target_hash
         else:
-            return f"Target {target} already exists"
+            # No image hash available (unsupported format) - fall back to bytes
+            results[(source, target)] = filecmp.cmp(source, target, shallow=False)
 
-    return None
+    return results
 
 
 def organize_media(
@@ -221,7 +272,9 @@ def organize_media(
     batch_size: int = 50,
     skip_flag_check: bool = False,
     check_duplicates: bool = False,
-    overwrite: bool = False
+    overwrite: bool = False,
+    delete_duplicates: bool = False,
+    compare_mode: str = "bytes"
 ) -> int:
     """
     Main organizing logic.
@@ -236,7 +289,14 @@ def organize_media(
         skip_flag_check: Skip checking for immutable flags on source files
         check_duplicates: Use expensive file comparison to detect duplicates (default: False)
         overwrite: Skip conflict checks and overwrite existing files (default: False)
+        delete_duplicates: Delete source files already present at the target
+            (implies check_duplicates, default: False)
+        compare_mode: How to decide two files are the same, "bytes" or "image"
     """
+    # Deleting is destructive, so never do it without verifying file contents
+    if delete_duplicates:
+        check_duplicates = True
+
     if not source_dir.is_dir():
         print(f"Error: Source '{source_dir}' is not a directory", file=sys.stderr)
         return 1
@@ -293,31 +353,43 @@ def organize_media(
     # Plan all moves
     moves: List[Tuple[Path, Path]] = []
     duplicates: List[Tuple[Path, Path]] = []
+    occupied: List[Tuple[Path, Path]] = []  # target already exists, needs comparison
 
     for file_path, date in file_dates.items():
         target_path = calculate_target_path(file_path, date, target_dir, group_by_extension)
 
+        # An in-place import must never delete its own archived file.
+        if target_path.exists() and file_path.samefile(target_path):
+            continue
+
         if overwrite:
             # Skip conflict checks, just move/overwrite
             moves.append((file_path, target_path))
+        elif target_path.parent.is_file():
+            errors.append((file_path, f"Target directory {target_path.parent} is a file"))
+        elif target_path.exists():
+            occupied.append((file_path, target_path))
         else:
-            conflict = check_file_conflict(file_path, target_path, check_duplicates)
-            if conflict:
-                # When check_duplicates is enabled and no conflict returned, it means files are identical
-                # When check_duplicates is disabled, we don't know if they're duplicates
-                errors.append((file_path, conflict))
-            else:
-                # No conflict - either target doesn't exist, or it's an identical file (when check_duplicates=True)
-                if target_path.exists():
-                    # Target exists and is identical (only possible when check_duplicates=True)
-                    duplicates.append((file_path, target_path))
+            moves.append((file_path, target_path))
+
+    # Decide which occupied targets are duplicates of their source
+    if occupied:
+        if check_duplicates:
+            identical = compare_pairs(occupied, compare_mode, batch_size)
+            for source, target in occupied:
+                if identical[(source, target)]:
+                    duplicates.append((source, target))
                 else:
-                    moves.append((file_path, target_path))
+                    errors.append((source, f"Target {target} already exists with different content"))
+        else:
+            for source, target in occupied:
+                errors.append((source, f"Target {target} already exists"))
 
     # Report what will happen
     print(f"\nPlanned operations:")
     print(f"  Moves: {len(moves)}")
-    print(f"  Duplicates (can delete): {len(duplicates)}")
+    dup_label = "will delete" if delete_duplicates else "can delete"
+    print(f"  Duplicates ({dup_label}): {len(duplicates)}")
     print(f"  Errors: {len(errors)}")
 
     if dry_run:
@@ -328,7 +400,8 @@ def organize_media(
             print(f"  ... and {len(moves) - 10} more")
 
         if duplicates:
-            print(f"\nDuplicates (can delete source):")
+            action = "would delete source" if delete_duplicates else "can delete source"
+            print(f"\nDuplicates ({action}):")
             for source, target in duplicates[:5]:
                 print(f"  {source} (identical to {target})")
             if len(duplicates) > 5:
@@ -359,9 +432,22 @@ def organize_media(
             print("All moves completed successfully!")
 
         if duplicates:
-            print(f"\nFound {len(duplicates)} duplicate files (can be deleted):")
-            for source, target in duplicates:
-                print(f"  {source}")
+            if delete_duplicates:
+                print(f"\nDeleting {len(duplicates)} duplicate source files...")
+                deleted = 0
+                with tqdm(total=len(duplicates), desc="Deleting", unit="file") as pbar:
+                    for source, target in duplicates:
+                        try:
+                            source.unlink()
+                            deleted += 1
+                        except Exception as e:
+                            errors.append((source, f"Delete failed: {e}"))
+                        pbar.update(1)
+                print(f"Deleted {deleted} duplicate files.")
+            else:
+                print(f"\nFound {len(duplicates)} duplicate files (can be deleted):")
+                for source, target in duplicates:
+                    print(f"  {source}")
 
     # Report errors
     if errors:
@@ -415,6 +501,21 @@ def main():
         help="Use file comparison to detect duplicates (expensive, default: disabled)"
     )
     parser.add_argument(
+        "--delete-duplicates",
+        action="store_true",
+        help="Delete source files already present at the target "
+             "(implies --check-duplicates)"
+    )
+    parser.add_argument(
+        "--compare",
+        choices=["bytes", "image"],
+        default="bytes",
+        help="How to decide two files are the same: 'bytes' requires a byte-for-byte "
+             "match, 'image' compares only the image data so files that differ just "
+             "in metadata (e.g. XMP written by Lightroom) still count as duplicates "
+             "(default: bytes)"
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite existing files without checking (fastest, default: disabled)"
@@ -430,7 +531,9 @@ def main():
         batch_size=args.batch_size,
         skip_flag_check=args.skip_flag_check,
         check_duplicates=args.check_duplicates,
-        overwrite=args.overwrite
+        overwrite=args.overwrite,
+        delete_duplicates=args.delete_duplicates,
+        compare_mode=args.compare
     )
 
     sys.exit(exit_code)

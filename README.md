@@ -10,7 +10,7 @@ Automatically organizes photos and videos into a date-based directory structure 
 
 **Usage:**
 ```bash
-./archivist.py SOURCE_DIR TARGET_DIR [--dry-run] [--ext]
+./archivist.py SOURCE_DIR TARGET_DIR [--dry-run] [--ext] [--delete-duplicates] [--compare bytes|image]
 ```
 
 **Features:**
@@ -19,6 +19,7 @@ Automatically organizes photos and videos into a date-based directory structure 
 - Optional extension grouping with `--ext` flag
 - Batch processing with progress bars
 - Detects and reports duplicates
+- Deletes already-archived source files with `--delete-duplicates`
 - Dry-run mode to preview changes
 
 **Example:**
@@ -28,7 +29,30 @@ Automatically organizes photos and videos into a date-based directory structure 
 
 # Actually organize the files
 ./archivist.py ~/Downloads/photos ~/Pictures/organized
+
+# Re-running an import: delete sources already present in the archive
+./archivist.py ~/Downloads/photos ~/Pictures/organized --delete-duplicates
+
+# Same, but ignore metadata-only differences (e.g. XMP added by Lightroom)
+./archivist.py ~/Downloads/photos ~/Pictures/organized --delete-duplicates --compare image
 ```
+
+`--delete-duplicates` removes a source file only when the file already sitting at
+its target path is the same photo (it implies `--check-duplicates`). Files that
+share a name but hold a different photo are never deleted — they are reported as
+errors so you can resolve them yourself.
+
+`--compare` chooses what "the same photo" means:
+
+| Mode | Meaning |
+|---|---|
+| `bytes` (default) | Byte-for-byte identical files. Fast, strictest. |
+| `image` | Only the image data must match. Files that differ purely in metadata — an XMP block written by Lightroom, an edited EXIF tag, a Finder comment — still count as duplicates. |
+
+Use `--compare image` when your source files have been opened by Lightroom or a
+similar tool since they were archived: those write metadata back into the file,
+so the bytes no longer match even though the photo is unchanged. Note that
+deleting such a source discards the metadata it had gained.
 
 ### 2. lightbox.py - Tagged Image Viewer
 
