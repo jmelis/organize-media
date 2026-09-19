@@ -54,6 +54,59 @@ similar tool since they were archived: those write metadata back into the file,
 so the bytes no longer match even though the photo is unchanged. Note that
 deleting such a source discards the metadata it had gained.
 
+### archivist-wd.py - Archive to WD Elements with PhotoPrism deduplication
+
+An opinionated variant of `archivist.py`, reusing its EXIF/video date extraction
+and `YYYY/YYYY-MM-DD/` paths. Each source directory is classified independently:
+if its immediate files include a RAW, its supported media goes to
+`/Volumes/WD Elements AE/Raws`; otherwise it goes to `Export`. A JPEG-only child
+directory therefore goes to `Export` even when its parent has RAWs. Files without
+a usable metadata date are reported and retained. Symlinks, sidecars, and
+unsupported files are left alone.
+
+```bash
+# Preview every operation (default is copy, with one hashing thread)
+./archivist-wd.py ~/Desktop/"2025-10 London" --dry-run
+
+# Copy new files; parallel source hashing is optional (use 1 for a spinning HDD)
+./archivist-wd.py SOURCE --threads 4
+
+# Move new files after verifying their copied contents; indexed files stay skipped
+./archivist-wd.py SOURCE --move --dry-run
+
+# Only delete already-indexed duplicates; leave unindexed files untouched
+./archivist-wd.py SOURCE --delete-source --dry-run
+```
+
+`--copy` (default), `--move`, and `--delete-source` are mutually exclusive.
+Remove `--dry-run` to execute. Only hashing is parallelized; archive writes are
+sequential. Different files with colliding names receive `_2`, `_3`, etc. before
+the extension. Existing files are never overwritten, including collisions
+between files in the same import or a concurrently created destination.
+
+The script hashes source files with whole-file SHA-1 and queries PhotoPrism's
+stored hashes directly over `127.0.0.1:3306`, using a read-only transaction.
+Credentials and optional `MARIADB_PORT` come from
+`~/personal/git/photoprism/.env` (override with `--db-env PATH`). It does not use
+`podman exec` or change database entries. Matches anywhere in the indexed
+`Raws`, `Export`, or `Other` trees are considered, regardless of filename.
+An indexed copy must still exist with the expected size to count as a match.
+
+Copy/skip decisions trust the stored hash. Before `--delete-source` actually
+removes anything, it reads and hashes the archived copy too; a stale index
+cannot authorize deletion. Dry-run lists candidate deletions without doing this
+extra archive-content verification. New copies are staged and verified before
+publication; move removes the source only after successful copying. The script
+first checks that `/Volumes/WD Elements AE/Raws` exists and exits with "not
+mounted" if absent, then checks the WD volume UUID/mount and rejects overlapping
+source/archive trees.
+
+After importing, run PhotoPrism indexing through its usual workflow before
+importing the same sources again. Until indexed, new copies are not database
+matches and a repeated import will create numbered copies.
+
+Run the isolated filesystem tests with `uv run test_archivist_wd.py`.
+
 ### 2. lightbox.py - Tagged Image Viewer
 
 A fast image viewer for JPEGs with built-in macOS color tagging support.
