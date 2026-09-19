@@ -110,6 +110,55 @@ If `TARGET_DIR` is not provided, subdirectories will be created in `SOURCE_DIR`.
 - Dry-run mode to preview operations
 - Detailed error reporting
 
+### 4. vault.py - Copy to the SAN and Check What's There
+
+Replicates `~/Pictures` to the SAN at `/Volumes/data/Fotos`, and answers whether a
+given path is already safely there so you can decide what to delete locally.
+
+**Usage:**
+```bash
+./vault.py sync [-n]
+./vault.py check PATH [--checksum] [--limit N] [--extra] [-q]
+```
+
+**`sync`** copies `~/Pictures/Albums` and every `~/Pictures/YYYY` directory to the
+SAN. It is additive: it never passes `--delete` to rsync, so files that exist only
+on the SAN are left alone. Files that exist on both sides are updated from the local
+copy. Anything not matching `Albums` or a four-digit year — `borked/`, the Photos and
+Lightroom library bundles — is never touched.
+
+**`check`** compares a file or directory against its SAN counterpart on size and
+whole-second mtime, and exits 0 only when everything matches, so it composes:
+
+```bash
+./vault.py check ~/Pictures/2025/2025-10-05 && rm -rf ~/Pictures/2025/2025-10-05
+```
+
+```
+✓ 2025/2025-10-05 — all 72 files present on the SAN, sizes and mtimes match
+
+✗ 2026/2026-09-06 — 64 files checked, 64 missing
+  MISSING (64):
+    DSCF2587.RAF
+    ... and 59 more (--limit 0 to list all)
+```
+
+| Option | Effect |
+|---|---|
+| `--checksum` | Also compare file contents. Slow — roughly 85 minutes per 63 GB over SMB. |
+| `--limit N` | Cap entries listed per section (default 50; `0` lists all). |
+| `--extra` | Also list files present on the SAN but not locally. Normal here, so off by default. |
+| `-q`, `--quiet` | Print nothing; report the verdict through the exit code only. |
+
+**Safety:** both subcommands first assert that `/Volumes/data/Fotos` really is the
+expected SMB share, by name and by server address. If the share is unmounted, that
+path can resolve to an empty local directory — which would make `sync` fill the boot
+disk and `check` declare everything missing. Both refuse instead.
+
+Note that macOS ships openrsync rather than GNU rsync, so `sync` sticks to flags
+openrsync supports. Finder colour tags are not preserved: the SAN stores no extended
+attributes.
+
 ## Workflow
 
 ### Complete Photo Organization Workflow
@@ -152,6 +201,21 @@ If `TARGET_DIR` is not provided, subdirectories will be created in `SOURCE_DIR`.
    - `process-raw/` - RAF files ready for editing in Lightroom/etc
    - `process-jpg/` - JPEGs ready for quick edits
    - `delete/` - Files to review and delete
+
+5. **Archive to the SAN and reclaim disk space**
+   ```bash
+   # See how much is not yet on the SAN
+   ./vault.py sync --dry-run
+
+   # Copy it across (use caffeinate so the Mac doesn't sleep mid-transfer)
+   caffeinate -i ./vault.py sync
+
+   # Confirm a folder is safely there before deleting the local copy
+   ./vault.py check ~/Pictures/2025/2025-10-05 && rm -rf ~/Pictures/2025/2025-10-05
+   ```
+
+   `vault.py` never deletes anything itself — `check` gives you a verdict and an exit
+   code, and the deletion stays your call.
 
 ## Requirements
 
