@@ -12,12 +12,13 @@
 Simple image viewer with arrow key navigation and fullscreen toggle.
 
 Usage:
-    ./lightbox.py <file_or_directory>
+    ./lightbox.py [--hide-name] <file_or_directory>
 
 Keys:
     Left/Right Arrow: Navigate between images
     PgUp/PgDn: Jump to first/last image
     F: Toggle fullscreen
+    N: Toggle filename visibility
     H: Show help
     Y: Copy full path to clipboard
     Escape: Exit fullscreen or quit
@@ -26,6 +27,7 @@ Keys:
     0: Clear all tags
 """
 
+import argparse
 import sys
 from pathlib import Path
 from PIL import Image, ImageOps
@@ -138,11 +140,12 @@ class TagCache:
 
 
 class ImageViewer(QMainWindow):
-    def __init__(self, image_files, start_index=0):
+    def __init__(self, image_files, start_index=0, hide_name=False):
         super().__init__()
 
         self.image_files = sorted(image_files)
         self.current_index = start_index
+        self.hide_name = hide_name
         self.current_pil_image = None
 
         # Initialize caches
@@ -250,10 +253,7 @@ class ImageViewer(QMainWindow):
 
             # Invalidate cache and refresh the status bar
             self.tag_cache.invalidate(path)
-            tags = self.get_file_tags(path)
-            tag_html = self.get_tag_html(tags)
-            status_text = f"{self.current_index + 1}/{len(self.image_files)} - {path.name}{tag_html}"
-            self.status_label.setText(status_text)
+            self.update_status(path)
 
         except Exception as e:
             print(f"Error setting tag: {e}", file=sys.stderr)
@@ -269,8 +269,7 @@ class ImageViewer(QMainWindow):
 
             # Invalidate cache and refresh the status bar
             self.tag_cache.invalidate(path)
-            status_text = f"{self.current_index + 1}/{len(self.image_files)} - {path.name}"
-            self.status_label.setText(status_text)
+            self.update_status(path)
 
         except Exception as e:
             print(f"Error clearing tags: {e}", file=sys.stderr)
@@ -288,6 +287,20 @@ class ImageViewer(QMainWindow):
             )
         return "  " + "".join(html_parts)
 
+    def update_status(self, path):
+        """Show the image position, optional name, and color tags."""
+        status_text = f"{self.current_index + 1}/{len(self.image_files)}"
+        if not self.hide_name:
+            status_text += f" - {path.name}"
+        status_text += self.get_tag_html(self.get_file_tags(path))
+        self.status_label.setText(status_text)
+
+    def update_name_display(self):
+        """Refresh filename visibility for the current image."""
+        path = self.image_files[self.current_index]
+        self.update_status(path)
+        self.setWindowTitle("Image Viewer" if self.hide_name else f"Image Viewer - {path.name}")
+
     def load_and_display(self):
         """Load and display the current image."""
         if not self.image_files or self.current_index >= len(self.image_files):
@@ -295,14 +308,8 @@ class ImageViewer(QMainWindow):
 
         path = self.image_files[self.current_index]
 
-        # Get tags for this image
-        tags = self.get_file_tags(path)
-        tag_html = self.get_tag_html(tags)
-
         # Update status and title
-        status_text = f"{self.current_index + 1}/{len(self.image_files)} - {path.name}{tag_html}"
-        self.status_label.setText(status_text)
-        self.setWindowTitle(f"Image Viewer - {path.name}")
+        self.update_name_display()
 
         # Load image
         self.current_pil_image = self.load_image(path)
@@ -399,6 +406,7 @@ Navigation:
   ← / →       Previous / Next image
   PgUp/PgDn   First / Last image
   F           Toggle fullscreen
+  N           Toggle filename visibility
   Q / Esc     Quit (or exit fullscreen)
 
 Color Tagging:
@@ -494,16 +502,21 @@ Tags are saved to macOS Finder metadata."""
             QTimer.singleShot(100, self.update_display)
         elif key == Qt.Key_H:
             self.show_help()
+        elif key == Qt.Key_N:
+            self.hide_name = not self.hide_name
+            self.update_name_display()
         elif key == Qt.Key_Y:
             # Copy full path to clipboard
             path = self.image_files[self.current_index]
             clipboard = QApplication.clipboard()
             clipboard.setText(str(path.absolute()))
             # Show feedback in status bar
-            original_text = self.status_label.text()
-            self.status_label.setText(f"Copied path to clipboard: {path.absolute()}")
+            feedback = "Copied path to clipboard"
+            if not self.hide_name:
+                feedback += f": {path.absolute()}"
+            self.status_label.setText(feedback)
             # Restore original status after 2 seconds
-            QTimer.singleShot(2000, lambda: self.status_label.setText(original_text))
+            QTimer.singleShot(2000, self.update_name_display)
         elif key == Qt.Key_Escape:
             if self.isFullScreen():
                 self.showNormal()
@@ -567,17 +580,17 @@ def collect_images(path):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print(__doc__)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="View and tag JPEG images.")
+    parser.add_argument("path", help="JPEG file or directory to view")
+    parser.add_argument("--hide-name", action="store_true", help="Hide filenames in the viewer")
+    args = parser.parse_args()
 
-    input_path = sys.argv[1]
-    image_files, start_index = collect_images(input_path)
+    image_files, start_index = collect_images(args.path)
 
     print(f"Found {len(image_files)} images")
 
-    app = QApplication(sys.argv)
-    viewer = ImageViewer(image_files, start_index)
+    app = QApplication([sys.argv[0]])
+    viewer = ImageViewer(image_files, start_index, hide_name=args.hide_name)
     viewer.show()
     sys.exit(app.exec_())
 

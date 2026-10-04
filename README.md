@@ -122,14 +122,19 @@ A fast image viewer for JPEGs with built-in macOS color tagging support.
 
 **Usage:**
 ```bash
-./lightbox.py <file_or_directory>
+./lightbox.py [--hide-name] <file_or_directory>
 ```
+
+Use `--hide-name` to hide filenames from the status bar and window title while
+keeping the image position and color tag indicators visible. Press `N` in the
+viewer to show or hide filenames at any time.
 
 **Keyboard Shortcuts:**
 - **Navigation:**
   - `←` / `→` - Previous / Next image
   - `PgUp` / `PgDn` - Jump to first / last image
   - `F` - Toggle fullscreen
+  - `N` - Toggle filename visibility
   - `Q` / `Esc` - Quit (or exit fullscreen)
   - `H` - Show help
 
